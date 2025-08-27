@@ -5,8 +5,8 @@ from pathlib import Path
 from collections import defaultdict
 
 class VideoDatasetSplitter:
-    def __init__(self, source_dir, target_dir, train_ratio=0.7, val_ratio=0.2, test_ratio=0.1):
-        self.source_dir = Path(source_dir)
+    def __init__(self, source_base_dir, target_dir, train_ratio=0.7, val_ratio=0.2, test_ratio=0.1):
+        self.source_base_dir = Path(source_base_dir)  # D:\PR1\Dataset
         self.target_dir = Path(target_dir)
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio  
@@ -18,80 +18,110 @@ class VideoDatasetSplitter:
     
     def split_videos_by_category(self):
         """
-        Split videos according to the distribution table in your document
+        Split videos from your subcategorized directory structure:
+        Dataset/Animation/videos/Cartoon/
+        Dataset/Animation/videos/Pokemon/
+        Dataset/Gaming/videos/Games/
+        etc.
         """
         
-        # Distribution from your document
-        distribution = {
-            'Animation': {
-                'Cartoon': {'total': 562, 'train': 394, 'val': 112, 'test': 56},
-                'Animation': {'total': 232, 'train': 163, 'val': 46, 'test': 23},
-                'Pokemon': {'total': 47, 'train': 33, 'val': 9, 'test': 5}
-            },
-            'Gaming': {
-                'Games': {'total': 498, 'train': 348, 'val': 100, 'test': 50},
-                'Video_game': {'total': 341, 'train': 239, 'val': 68, 'test': 34}
-            },
-            'Natural_Content': {
-                'Animal': {'total': 261, 'train': 183, 'val': 52, 'test': 26},
-                'Pet': {'total': 220, 'train': 154, 'val': 44, 'test': 22}
-            },
-            'Flat_Content': {
-                'Art': {'total': 357, 'train': 250, 'val': 71, 'test': 36},
-                'Drawing': {'total': 220, 'train': 154, 'val': 44, 'test': 22}
-            }
+        # Define all subcategories based on your actual structure
+        category_structure = {
+            'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto', 'The Walt Disney Company', 
+                         'Dragon Ball', 'Sonic the Hedgehog', 'One Piece', 'Walt Disney World', 
+                         'Bleach', 'Mickey Mouse'],
+            
+            'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto V', 
+                      'World of Warcraft', 'Call of Duty: Black Ops II', 'League of Legends', 
+                      'Battlefield', 'Grand Theft Auto: San Andreas', 'RuneScape', 
+                      'Call of Duty: Modern Warfare 3', 'Call of Duty: Black Ops', 'FIFA 15', 
+                      'Counter-Strike', 'Need for Speed'],
+            
+            'Natural Content': ['Animal', 'Pet', 'Fishing', 'Fish', 'Outdoor recreation', 'Dog', 
+                               'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature', 
+                               'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
+            
+            'Flat Content': ['Art', 'Drawing', 'Painting', 'Photography', 'Sketch', 'Graffiti', 
+                            'Comics', 'Illustration', 'Map', 'Logo', 'Pattern', 'Text', 'Chart', 'Poster']
         }
         
-        for main_category, subcategories in distribution.items():
-            print(f"\nProcessing {main_category}...")
+        # Map original folder names to standardized names
+        name_mapping = {
+            'Natural Content': 'Natural_Content',
+            'Flat Content': 'Flat_Content',
+            'Animation': 'Animation',
+            'Gaming': 'Gaming'
+        }
+        
+        for original_category, subcategories in category_structure.items():
+            standard_category = name_mapping[original_category]
+            print(f"\nProcessing {original_category}...")
             
-            for subcategory, splits in subcategories.items():
-                source_path = self.source_dir / main_category / subcategory
+            # Collect all videos from all subcategories of this main category
+            all_category_videos = []
+            
+            for subcategory in subcategories:
+                subcategory_path = self.source_base_dir / original_category / 'videos' / subcategory
                 
-                if not source_path.exists():
-                    print(f"Warning: {source_path} not found, skipping...")
+                if not subcategory_path.exists():
+                    print(f"  Warning: {subcategory_path} not found, skipping...")
                     continue
                 
-                # Get all video files
-                video_files = list(source_path.glob("*.mp4")) + \
-                             list(source_path.glob("*.avi")) + \
-                             list(source_path.glob("*.mov")) + \
-                             list(source_path.glob("*.mkv"))
+                # Get all video files from this subcategory - fix double counting
+                video_extensions = ["*.mp4", "*.avi", "*.mov", "*.mkv", "*.MP4", "*.AVI", "*.MOV", "*.MKV"]
+                subcategory_videos = []
                 
-                if len(video_files) == 0:
-                    print(f"No video files found in {source_path}")
-                    continue
+                for ext in video_extensions:
+                    files = list(subcategory_path.glob(ext))
+                    subcategory_videos.extend(files)
                 
-                # Shuffle for random split
-                random.shuffle(video_files)
+                # Remove any potential duplicates (though there shouldn't be any)
+                subcategory_videos = list(set(subcategory_videos))
                 
-                # Calculate actual splits based on available files
-                total_files = len(video_files)
-                train_count = min(splits['train'], int(total_files * self.train_ratio))
-                val_count = min(splits['val'], int(total_files * self.val_ratio))
-                test_count = min(splits['test'], total_files - train_count - val_count)
-                
-                print(f"  {subcategory}: {total_files} files -> Train:{train_count}, Val:{val_count}, Test:{test_count}")
-                
-                # Split files
-                train_files = video_files[:train_count]
-                val_files = video_files[train_count:train_count + val_count]
-                test_files = video_files[train_count + val_count:train_count + val_count + test_count]
-                
-                # Copy files to respective folders
-                self._copy_files(train_files, 'train', main_category, subcategory)
-                self._copy_files(val_files, 'val', main_category, subcategory)
-                self._copy_files(test_files, 'test', main_category, subcategory)
+                if subcategory_videos:
+                    print(f"  Found {len(subcategory_videos)} videos in {subcategory}")
+                    all_category_videos.extend(subcategory_videos)
+            
+            if not all_category_videos:
+                print(f"  No videos found in {original_category}")
+                continue
+            
+            # Shuffle all videos from this category for random split
+            random.shuffle(all_category_videos)
+            
+            total_files = len(all_category_videos)
+            print(f"  Total {original_category} videos: {total_files}")
+            
+            # Calculate splits based on ratios
+            train_count = int(total_files * self.train_ratio)
+            val_count = int(total_files * self.val_ratio)
+            test_count = total_files - train_count - val_count
+            
+            print(f"  Splitting: Train:{train_count}, Val:{val_count}, Test:{test_count}")
+            
+            # Split files
+            train_files = all_category_videos[:train_count]
+            val_files = all_category_videos[train_count:train_count + val_count]
+            test_files = all_category_videos[train_count + val_count:]
+            
+            # Copy files to respective folders (using standard category names)
+            self._copy_files(train_files, 'train', standard_category)
+            self._copy_files(val_files, 'val', standard_category)
+            self._copy_files(test_files, 'test', standard_category)
     
-    def _copy_files(self, files, split, main_category, subcategory):
+    def _copy_files(self, files, split, main_category):
         """Copy files to the target split directory"""
-        target_path = self.target_dir / 'raw' / split / main_category / subcategory
+        target_path = self.target_dir / 'raw' / split / main_category
         target_path.mkdir(parents=True, exist_ok=True)
         
-        for file_path in files:
+        print(f"    Copying {len(files)} files to {target_path}")
+        
+        for i, file_path in enumerate(files):
             dest_path = target_path / file_path.name
             try:
                 shutil.copy2(file_path, dest_path)
+                if (i + 1) % 50 == 0:  # Progress indicator
+                    print(f"      Copied {i + 1}/{len(files)} files")
             except Exception as e:
                 print(f"Error copying {file_path}: {e}")
     
@@ -99,40 +129,56 @@ class VideoDatasetSplitter:
         """Verify the split was successful"""
         print("\n=== SPLIT VERIFICATION ===")
         
+        video_extensions = ["*.mp4", "*.avi", "*.mov", "*.mkv", "*.MP4", "*.AVI", "*.MOV", "*.MKV"]
+        
         for split in ['train', 'val', 'test']:
             split_path = self.target_dir / 'raw' / split
             if split_path.exists():
-                total_files = len(list(split_path.rglob("*.mp4"))) + \
-                             len(list(split_path.rglob("*.avi"))) + \
-                             len(list(split_path.rglob("*.mov"))) + \
-                             len(list(split_path.rglob("*.mkv")))
+                # Count total files
+                total_files = 0
+                for ext in video_extensions:
+                    total_files += len(list(split_path.rglob(ext)))
+                
                 print(f"{split.upper()}: {total_files} files")
                 
                 # Count by category
                 for main_cat in ['Animation', 'Gaming', 'Natural_Content', 'Flat_Content']:
                     cat_path = split_path / main_cat
                     if cat_path.exists():
-                        cat_files = len(list(cat_path.rglob("*.mp4"))) + \
-                                   len(list(cat_path.rglob("*.avi"))) + \
-                                   len(list(cat_path.rglob("*.mov"))) + \
-                                   len(list(cat_path.rglob("*.mkv")))
+                        cat_files = 0
+                        for ext in video_extensions:
+                            cat_files += len(list(cat_path.glob(ext)))
                         print(f"  {main_cat}: {cat_files}")
+            else:
+                print(f"{split.upper()}: Directory not found")
 
 # Usage example
 def main():
-    # MODIFY THESE PATHS TO MATCH YOUR SETUP
-    source_directory = "D:\\PR1\\Dataset"  # Where your 4000 videos are currently stored
-    target_directory = "video_classification_project/data"
+    # Use relative paths from current working directory (PR1)
+    source_directory = "Dataset"  # Assumes running from PR1 directory
+    target_directory = "video_classification_project/data"  # Will be created in PR1
+    
+    print("Starting video dataset split...")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Source: {Path(source_directory).absolute()}")
+    print(f"Target: {Path(target_directory).absolute()}")
+    print()
+    
+    # Check if source directory exists
+    if not Path(source_directory).exists():
+        print(f"ERROR: Source directory '{source_directory}' not found!")
+        print("Please ensure you're running this script from the PR1 directory")
+        print("and that the 'Dataset' folder exists.")
+        return
     
     splitter = VideoDatasetSplitter(
-        source_dir=source_directory,
+        source_base_dir=source_directory,
         target_dir=target_directory,
         train_ratio=0.7,
         val_ratio=0.2, 
         test_ratio=0.1
     )
     
-    print("Starting video dataset split...")
     splitter.split_videos_by_category()
     splitter.verify_split()
     print("\nDataset split completed!")

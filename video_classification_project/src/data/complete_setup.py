@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Complete Video Classification Project Setup
 Run this script from the PR1 directory to set up everything automatically.
@@ -43,7 +44,7 @@ def check_environment():
         print("and that the Dataset folder exists.")
         return False
     
-    # Check for category directories
+    # Check for main category directories
     required_categories = ["Animation", "Gaming", "Natural Content", "Flat Content"]
     missing_categories = []
     
@@ -54,10 +55,44 @@ def check_environment():
     
     if missing_categories:
         print(f"❌ ERROR: Missing category directories: {missing_categories}")
-        print("Please ensure each category has a 'videos' subfolder.")
+        print("Please ensure each category has the structure: Dataset/Category/videos/Subcategory/")
         return False
     
-    print("✅ Environment check passed!")
+    # Check for some subcategories to verify structure
+    sample_subcategories = {
+        'Animation': ['Cartoon', 'Animation', 'Lego minifigure'],
+        'Gaming': ['Games', 'Video game'],
+        'Natural Content': ['Animal', 'Pet'],
+        'Flat Content': ['Art', 'Drawing']
+    }
+    
+    # Use case-insensitive extension matching to avoid duplicates
+    video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}
+    
+    found_videos = False
+    for main_cat, subcats in sample_subcategories.items():
+        for subcat in subcats[:2]:  # Check first 2 subcategories
+            subcat_path = dataset_dir / main_cat / "videos" / subcat
+            if subcat_path.exists():
+                # Check if it has any video files - fixed to avoid double counting
+                all_files = list(subcat_path.iterdir())
+                video_files = [
+                    f for f in all_files 
+                    if f.is_file() and f.suffix.lower() in video_extensions
+                ]
+                
+                if video_files:  # If any videos found
+                    found_videos = True
+                    break
+        if found_videos:
+            break
+    
+    if not found_videos:
+        print("⚠️  WARNING: No video files found in expected subcategories")
+        print("Expected structure: Dataset/Animation/videos/Cartoon/*.mp4")
+    else:
+        print("✅ Environment check passed!")
+    
     return True
 
 def install_requirements():
@@ -91,8 +126,6 @@ def install_requirements():
 def create_project_structure():
     """Create the project directory structure"""
     print("\n📁 Creating project structure...")
-    
-    from analyze_dataset import analyze_dataset  # Import your analyzer
     
     folders = [
         "video_classification_project/data/raw/train/Animation",
@@ -152,8 +185,31 @@ def run_dataset_analysis():
     
     try:
         # Import and run the analyzer
-        import analyze_dataset
-        category_counts, total_videos = analyze_dataset.analyze_dataset("Dataset")
+        sys.path.append('.')  # Add current directory to path
+        
+        # Define the analyzer function inline if import fails
+        try:
+            from analyze_dataset import analyze_dataset
+            category_counts, total_videos = analyze_dataset("Dataset")
+        except ImportError:
+            print("Analyzer import failed, running basic count...")
+            # Basic count without importing - fixed to avoid double counting
+            dataset_path = Path("Dataset")
+            total_videos = 0
+            
+            categories = ["Animation", "Gaming", "Natural Content", "Flat Content"]
+            video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}  # Use set for case-insensitive matching
+            
+            for category in categories:
+                category_path = dataset_path / category / "videos"
+                if category_path.exists():
+                    # Use rglob to recursively find all files, then filter by extension
+                    all_files = list(category_path.rglob("*"))
+                    video_files = [
+                        f for f in all_files 
+                        if f.is_file() and f.suffix.lower() in video_extensions
+                    ]
+                    total_videos += len(video_files)
         
         if total_videos == 0:
             print("❌ No videos found in dataset!")
@@ -172,8 +228,19 @@ def run_video_splitting():
     
     try:
         # Import and run the splitter
-        import split_dataset
-        split_dataset.main()
+        sys.path.append('.')
+        from split_dataset import VideoDatasetSplitter
+        
+        splitter = VideoDatasetSplitter(
+            source_base_dir="Dataset",
+            target_dir="video_classification_project/data",
+            train_ratio=0.7,
+            val_ratio=0.2, 
+            test_ratio=0.1
+        )
+        
+        splitter.split_videos_by_category()
+        splitter.verify_split()
         print("✅ Dataset split completed!")
         return True
         
@@ -190,12 +257,13 @@ def run_preprocessing(quick_test=False):
     
     try:
         # Import and run the preprocessor
-        import preprocess_videos
+        sys.path.append('.')
+        from preprocess_videos import VideoPreprocessor
         
         # For quick test, reduce frames per video
         frames_per_video = 10 if quick_test else 30
         
-        preprocessor = preprocess_videos.VideoPreprocessor(
+        preprocessor = VideoPreprocessor(
             input_dir="video_classification_project/data/raw",
             output_dir="video_classification_project/data/processed",
             frames_per_video=frames_per_video,
