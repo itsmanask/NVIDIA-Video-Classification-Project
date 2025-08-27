@@ -1,0 +1,10 @@
+import os
+
+root = "D:/PR1/video_classification_project"
+
+for dirpath, dirnames, filenames in os.walk(root):
+    if not filenames and not dirnames:
+        keep_file = os.path.join(dirpath, ".gitkeep")
+        with open(keep_file, "w") as f:
+            pass
+        print(f"Added .gitkeep in {dirpath}")
