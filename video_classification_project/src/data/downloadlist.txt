@@ -1,0 +1,11 @@
+Cartoon:562
+Animation:232
+Lego minifigure:47
+Naruto:44
+The Walt Disney Company:28
+Dragon Ball:27
+Sonic the Hedgehog:26
+One Piece:10
+Walt Disney World:8
+Bleach:6
+Mickey Mouse:4
