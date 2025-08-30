@@ -30,8 +30,8 @@ def analyze_dataset(base_path):
                            'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature', 
                            'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
         
-        'Flat Content': ['Art', 'Drawing', 'Painting', 'Photography', 'Sketch', 'Graffiti', 
-                        'Comics', 'Illustration', 'Map', 'Logo', 'Pattern', 'Text', 'Chart', 'Poster']
+        'Flat Content': ['Website', 'Chart', 'Map', 'Logo', 'Text', 'Typography', 
+                        'Screencast', 'Illustration', 'Poster']
     }
     
     # Use case-insensitive extension matching to avoid duplicates
@@ -111,7 +111,7 @@ def check_video_properties(base_path, sample_size=2):
         'Animation': ['Cartoon', 'Animation', 'Lego minifigure'],
         'Gaming': ['Games', 'Video game', 'Minecraft'], 
         'Natural Content': ['Animal', 'Pet', 'Dog'],
-        'Flat Content': ['Art', 'Drawing', 'Photography']
+        'Flat Content': ['Website', 'Chart', 'Map']
     }
     
     video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}

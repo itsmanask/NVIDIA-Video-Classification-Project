@@ -41,8 +41,8 @@ class VideoDatasetSplitter:
                                'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature', 
                                'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
             
-            'Flat Content': ['Art', 'Drawing', 'Painting', 'Photography', 'Sketch', 'Graffiti', 
-                            'Comics', 'Illustration', 'Map', 'Logo', 'Pattern', 'Text', 'Chart', 'Poster']
+            'Flat Content': ['Website', 'Chart', 'Map', 'Logo', 'Text', 'Typography', 
+                        'Screencast', 'Illustration', 'Poster']
         }
         
         # Map original folder names to standardized names
