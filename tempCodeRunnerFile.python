@@ -1,0 +1,11 @@
+# # PyTorch test
+import torch
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"cuDNN enabled: {torch.backends.cudnn.enabled}")
+print(f"cuDNN version: {torch.backends.cudnn.version()}")
+
+# TensorFlow test  
+import tensorflow as tf
+print(f"TensorFlow version: {tf.__version__}")
+print(f"GPU devices: {tf.config.list_physical_devices('GPU')}")
