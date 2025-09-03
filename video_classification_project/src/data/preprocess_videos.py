@@ -211,8 +211,8 @@ class VideoPreprocessor:
 # Usage example
 def main():
     preprocessor = VideoPreprocessor(
-        input_dir="video_classification_project/data/raw",
-        output_dir="video_classification_project/data/processed", 
+        input_dir="data/raw",
+        output_dir="data/processed", 
         frames_per_video=30,  # Extract 30 frames per video
         img_size=(224, 224)   # Resize to 224x224 for transfer learning
     )
