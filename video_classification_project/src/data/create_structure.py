@@ -86,5 +86,5 @@ jupyter>=1.0.0
     print(f"\nProject structure created successfully at: {base_dir.absolute()}")
     print("Next: Install requirements with: pip install -r requirements.txt")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     create_project_structure()
