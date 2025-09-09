@@ -15,12 +15,24 @@ class VideoPreprocessor:
         self.frames_per_video = frames_per_video
         self.img_size = img_size
         self.clip_duration = clip_duration
+        
+        # Setup device
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {self.device}")
+        if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name()}")
+            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        
+        # Basic transforms (will be moved to GPU later)
         self.transform = transforms.Compose([
             transforms.Resize(img_size),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
         ])
+        
+        # Normalization that we'll do on GPU
+        self.normalize_mean = torch.tensor([0.485, 0.456, 0.406]).to(self.device).view(3, 1, 1)
+        self.normalize_std = torch.tensor([0.229, 0.224, 0.225]).to(self.device).view(3, 1, 1)
+        
         self.category_structure = {
             'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto',
                           'The Walt Disney Company', 'Dragon Ball', 'Sonic the Hedgehog',
@@ -36,6 +48,25 @@ class VideoPreprocessor:
         }
         self.all_categories = list(self.category_structure.keys())
         self.resume_file = self.output_dir / "resume_checkpoint.json"
+
+    def normalize_on_gpu(self, tensor_batch):
+        """Perform normalization on GPU for better performance"""
+        return (tensor_batch - self.normalize_mean) / self.normalize_std
+
+    def apply_augmentations_gpu(self, tensor_batch):
+        """Apply augmentations on GPU tensors"""
+        batch_size, channels, height, width = tensor_batch.shape
+        
+        # Random horizontal flip
+        if torch.rand(1).item() > 0.5:
+            tensor_batch = torch.flip(tensor_batch, dims=[3])
+        
+        # Random brightness/contrast adjustment
+        if torch.rand(1).item() > 0.5:
+            brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.6  # ±0.3
+            tensor_batch = torch.clamp(tensor_batch * brightness_factor, 0, 1)
+        
+        return tensor_batch
 
     def save_resume_checkpoint(self, category, subcategory):
         """Save the last processed category and subcategory."""
@@ -93,15 +124,17 @@ class VideoPreprocessor:
     def extract_frames(self, video_path, max_frames=32, sampling_strategy='uniform'):
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
-            print(f"Error opening video: {video_path}")
             return []
+        
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         duration = total_frames / fps if fps > 0 else 0
         frames = []
+        
         if total_frames == 0 or duration < 1.0:
             cap.release()
             return frames
+        
         if sampling_strategy == 'middle_clip':
             clip_frames = min(int(self.clip_duration * fps), total_frames)
             start_frame = max(0, (total_frames - clip_frames) // 2)
@@ -114,12 +147,14 @@ class VideoPreprocessor:
         else:
             start_frame = 0
             end_frame = total_frames
+        
         sampling_frames = end_frame - start_frame
         if sampling_frames <= max_frames:
             frame_indices = list(range(start_frame, end_frame))
         else:
             step = sampling_frames / max_frames
             frame_indices = [start_frame + int(i * step) for i in range(max_frames)]
+        
         for frame_idx in frame_indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
@@ -128,45 +163,105 @@ class VideoPreprocessor:
                 frames.append(frame_rgb)
             if len(frames) >= max_frames:
                 break
+        
         cap.release()
         return frames
 
-    def preprocess_video(self, video_path, augment=False, sampling_strategy='uniform'):
-        frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy)
-        if len(frames) == 0:
-            return None
-        processed_frames = []
-        for frame in frames:
-            pil_frame = Image.fromarray(frame)
-            if augment:
-                augment_transform = transforms.Compose([
-                    transforms.RandomHorizontalFlip(0.5),
-                    transforms.RandomRotation(15),
-                    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-                    transforms.RandomResizedCrop(self.img_size[0], scale=(0.8, 1.0)),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
-                ])
-                processed_frame = augment_transform(pil_frame)
-            else:
-                processed_frame = self.transform(pil_frame)
-            processed_frames.append(processed_frame)
-        if len(processed_frames) < self.frames_per_video:
-            padding_needed = self.frames_per_video - len(processed_frames)
-            zero_frame = torch.zeros_like(processed_frames[0])
-            processed_frames.extend([zero_frame] * padding_needed)
-        elif len(processed_frames) > self.frames_per_video:
-            processed_frames = processed_frames[:self.frames_per_video]
-        video_tensor = torch.stack(processed_frames)
-        return video_tensor
+    def preprocess_video_batch_gpu(self, video_paths, augment=False, sampling_strategy='uniform', batch_size=8):
+        """Process multiple videos in batches on GPU for better efficiency"""
+        all_processed_videos = []
+        successful_filenames = []
+        
+        # Create progress bar for individual videos
+        video_pbar = tqdm(total=len(video_paths), desc="Processing videos", unit="video")
+        
+        # Process videos in batches
+        total_batches = (len(video_paths) + batch_size - 1) // batch_size
+        batch_pbar = tqdm(total=total_batches, desc="GPU batches", unit="batch", leave=False)
+        
+        for i in range(0, len(video_paths), batch_size):
+            batch_paths = video_paths[i:i+batch_size]
+            batch_frames_list = []
+            batch_filenames = []
+            
+            # Extract frames for all videos in batch (CPU operation)
+            for video_path in batch_paths:
+                try:
+                    frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy)
+                    if len(frames) > 0:
+                        batch_frames_list.append(frames)
+                        batch_filenames.append(video_path.name)
+                    video_pbar.update(1)
+                except Exception as e:
+                    # Silently skip failed videos to keep progress smooth
+                    video_pbar.update(1)
+                    continue
+            
+            if not batch_frames_list:
+                batch_pbar.update(1)
+                continue
+                
+            # Convert to tensors and move to GPU
+            batch_tensors = []
+            for frames in batch_frames_list:
+                frame_tensors = []
+                for frame in frames:
+                    pil_frame = Image.fromarray(frame)
+                    # Basic resize and convert to tensor (CPU)
+                    tensor_frame = self.transform(pil_frame)
+                    frame_tensors.append(tensor_frame)
+                
+                # Pad or trim to exact frame count
+                if len(frame_tensors) < self.frames_per_video:
+                    padding_needed = self.frames_per_video - len(frame_tensors)
+                    zero_frame = torch.zeros_like(frame_tensors[0])
+                    frame_tensors.extend([zero_frame] * padding_needed)
+                elif len(frame_tensors) > self.frames_per_video:
+                    frame_tensors = frame_tensors[:self.frames_per_video]
+                
+                video_tensor = torch.stack(frame_tensors)  # Shape: [frames, channels, height, width]
+                batch_tensors.append(video_tensor)
+            
+            if batch_tensors:
+                # Stack into batch and move to GPU
+                batch_tensor = torch.stack(batch_tensors).to(self.device)  # [batch, frames, channels, height, width]
+                
+                # Reshape for processing: [batch*frames, channels, height, width]
+                original_shape = batch_tensor.shape
+                reshaped_tensor = batch_tensor.view(-1, *batch_tensor.shape[2:])
+                
+                # Apply normalization on GPU
+                normalized_tensor = self.normalize_on_gpu(reshaped_tensor)
+                
+                # Apply augmentations if needed
+                if augment:
+                    normalized_tensor = self.apply_augmentations_gpu(normalized_tensor)
+                
+                # Reshape back to [batch, frames, channels, height, width]
+                processed_batch = normalized_tensor.view(original_shape)
+                
+                # Move back to CPU and add to results
+                for j in range(processed_batch.shape[0]):
+                    all_processed_videos.append(processed_batch[j].cpu())
+                
+                successful_filenames.extend(batch_filenames)
+                
+                # Clear GPU cache
+                del batch_tensor, processed_batch, normalized_tensor, reshaped_tensor
+                torch.cuda.empty_cache()
+            
+            batch_pbar.update(1)
+        
+        batch_pbar.close()
+        video_pbar.close()
+        
+        return all_processed_videos, successful_filenames
 
     def process_subcategory(self, split_name, category, category_idx, subcategory, augment, sampling_strategy):
         split_input_dir = self.input_dir / split_name
         split_output_dir = self.output_dir / split_name / category / subcategory
         split_output_dir.mkdir(parents=True, exist_ok=True)
 
-        # FIXED PATH: Removed 'videos' folder from path
         subcat_input_dir = split_input_dir / category / subcategory
         if not subcat_input_dir.exists():
             print(f"Subcategory path {subcat_input_dir} not found in {split_name}")
@@ -176,51 +271,60 @@ class VideoPreprocessor:
         video_files = [file for file in subcat_input_dir.iterdir()
                        if file.is_file() and file.suffix.lower() in video_extensions]
 
-        print(f"  Processing {len(video_files)} videos in {category}/{subcategory} with '{sampling_strategy}' strategy...")
+        print(f"  Processing {len(video_files)} videos in {category}/{subcategory} ({split_name}) with '{sampling_strategy}' strategy...")
+        
+        # Determine batch size based on available GPU memory
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory
+            # Estimate batch size based on GPU memory (conservative estimate)
+            batch_size = min(16, max(4, int(gpu_memory / 4e9)))  # 4GB per batch
+        else:
+            batch_size = 4
+        
+        print(f"  Using batch size: {batch_size}")
 
-        processed_data = []
-        labels = []
-        filenames = []
-
-        for video_path in tqdm(video_files, desc=f"{category}-{subcategory}"):
-            try:
-                video_tensor = self.preprocess_video(video_path, augment=augment, sampling_strategy=sampling_strategy)
-                if video_tensor is not None:
-                    processed_data.append(video_tensor)
-                    labels.append(category_idx)
-                    filenames.append(video_path.name)
-            except Exception as e:
-                print(f"Error processing {video_path}: {e}")
-                continue
-
-        if processed_data:
+        # Process videos in batches
+        all_processed_videos, successful_filenames = self.preprocess_video_batch_gpu(
+            video_files, augment=augment, sampling_strategy=sampling_strategy, batch_size=batch_size
+        )
+        
+        if all_processed_videos:
+            # Create labels for successful videos only
+            labels = [category_idx] * len(all_processed_videos)
+            
+            # Stack all processed videos
+            videos_tensor = torch.stack(all_processed_videos)
+            
             data_dict = {
-                'videos': torch.stack(processed_data),
+                'videos': videos_tensor,
                 'labels': torch.tensor(labels),
-                'filenames': filenames,
+                'filenames': successful_filenames,
                 'category_mapping': {category: category_idx}
             }
+            
             output_path = split_output_dir / 'processed_data.pt'
             torch.save(data_dict, output_path)
-            print(f"Saved {len(processed_data)} processed videos to {output_path}")
+            print(f"  ✓ Saved {len(all_processed_videos)} processed videos to {output_path}")
 
             metadata = {
-                'num_videos': len(processed_data),
+                'num_videos': len(all_processed_videos),
                 'frames_per_video': self.frames_per_video,
                 'image_size': self.img_size,
                 'category_mapping': {category: category_idx},
                 'augmented': augment,
                 'selected_category': category,
                 'selected_subcategory': subcategory,
-                'sampling_strategy': sampling_strategy
+                'sampling_strategy': sampling_strategy,
+                'device_used': str(self.device),
+                'batch_size_used': batch_size
             }
             with open(split_output_dir / 'metadata.json', 'w') as f:
                 json.dump(metadata, f, indent=2)
 
             self.save_resume_checkpoint(category, subcategory)
-            return len(processed_data)
+            return len(all_processed_videos)
         else:
-            print(f"No videos processed in {category}/{subcategory} for split {split_name}.")
+            print(f"  ✗ No videos processed in {category}/{subcategory} for split {split_name}.")
             return 0
 
     def interactive_process(self):
@@ -281,8 +385,11 @@ class VideoPreprocessor:
                         skip = False  # resume from here
 
                 sampling_strategy = self.get_sampling_strategy_for_subcategory(selected_category, subcat)
+                
+                # Process all splits for this subcategory
                 for split in ['train', 'val', 'test']:
                     augment = (split == 'train')
+                    print(f"\n--- Processing {split} split ---")
                     self.process_subcategory(split, selected_category, category_idx, subcat, augment, sampling_strategy)
 
             print(f"Completed processing for remaining subcategories in '{selected_category}'.")

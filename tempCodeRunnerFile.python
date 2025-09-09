@@ -1,0 +1,11 @@
+import tensorflow as tf
+
+# Check TensorFlow version
+print("TensorFlow version:", tf.__version__)
+
+# Check if TensorFlow detects a GPU
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    print("✅ GPU is available:", gpus)
+else:
+    print("❌ No GPU detected. Using CPU only.")

@@ -23,12 +23,36 @@ venv/
 *.tmp
 *.bak
 
+# ================================
 # Data folders (raw/processed, Dataset)
-video_classification_project/data/raw
-video_classification_project/data/processed
+# ================================
+
+# Raw data (ignore everything but .gitkeep in subfolders)
+video_classification_project/data/raw/train/*
+!video_classification_project/data/raw/train/.gitkeep
+
+video_classification_project/data/raw/test/*
+!video_classification_project/data/raw/test/.gitkeep
+
+video_classification_project/data/raw/val/*
+!video_classification_project/data/raw/val/.gitkeep
+
+# Processed data (ignore everything but .gitkeep in subfolders)
+video_classification_project/data/processed/train/*
+!video_classification_project/data/processed/train/.gitkeep
+
+video_classification_project/data/processed/test/*
+!video_classification_project/data/processed/test/.gitkeep
+
+video_classification_project/data/processed/val/*
+!video_classification_project/data/processed/val/.gitkeep
+
+# Dataset folder
 Dataset/
 
+# ================================
 # Common video/image formats
+# ================================
 *.mp4
 *.avi
 *.mov
@@ -40,17 +64,16 @@ Dataset/
 *.bmp
 
 # Models & checkpoints
-models/*.h5
-models/*.hdf5
-models/*.ckpt
-models/*.pth
-models/*.pt
-models/*.onnx
-*.pb
+models/*
+!models/.gitkeep
 
 # Results & outputs
-results/
-outputs/
+results/*
+!results/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
 *.npy
 *.npz
 *.csv
