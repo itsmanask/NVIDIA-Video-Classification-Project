@@ -22,22 +22,58 @@ class VideoPreprocessor:
                                  std=[0.229, 0.224, 0.225])
         ])
         self.category_structure = {
-            'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto', 'The Walt Disney Company',
-                          'Dragon Ball', 'Sonic the Hedgehog', 'One Piece', 'Walt Disney World',
-                          'Bleach', 'Mickey Mouse'],
+            'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto',
+                          'The Walt Disney Company', 'Dragon Ball', 'Sonic the Hedgehog',
+                          'One Piece', 'Walt Disney World', 'Bleach', 'Mickey Mouse'],
             'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto V',
-                      'World of Warcraft', 'Call of Duty: Black Ops II', 'League of Legends',
-                      'Battlefield', 'Grand Theft Auto: San Andreas', 'RuneScape',
-                      'Call of Duty: Modern Warfare 3', 'Call of Duty: Black Ops', 'FIFA 15',
-                      'Counter-Strike', 'Need for Speed'],
+                       'World of Warcraft', 'Call of Duty: Black Ops II', 'League of Legends',
+                       'Battlefield', 'Grand Theft Auto: San Andreas', 'RuneScape',
+                       'Call of Duty: Modern Warfare 3', 'Call of Duty: Black Ops', 'FIFA 15',
+                       'Counter-Strike', 'Need for Speed'],
             'Natural_Content': ['Animal', 'Pet', 'Fishing', 'Fish', 'Outdoor recreation', 'Dog',
-                               'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature',
-                               'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
+                                'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature',
+                                'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
             'Flat_Content': ['Website', 'Chart', 'Map', 'Logo', 'Text', 'Typography',
                              'Screencast', 'Illustration', 'Poster']
         }
         self.all_categories = list(self.category_structure.keys())
-        self.processed_categories = set()  # Track completed categories
+        self.resume_file = self.output_dir / "resume_checkpoint.json"
+
+    def save_resume_checkpoint(self, category, subcategory):
+        """Save the last processed category and subcategory."""
+        checkpoint = {"last_category": category, "last_subcategory": subcategory}
+        with open(self.resume_file, "w") as f:
+            json.dump(checkpoint, f)
+
+    def load_resume_checkpoint(self):
+        """Load the last processed category and subcategory, if exists."""
+        if self.resume_file.exists():
+            with open(self.resume_file, "r") as f:
+                return json.load(f)
+        return None
+
+    def clear_resume_checkpoint(self):
+        """Remove checkpoint when everything is finished."""
+        if self.resume_file.exists():
+            self.resume_file.unlink()
+
+    def is_subcategory_processed(self, split_name, category, subcategory):
+        subcat_output_dir = self.output_dir / split_name / category / subcategory
+        processed_file = subcat_output_dir / 'processed_data.pt'
+        return processed_file.exists()
+
+    def get_category_progress(self, category):
+        processed, unprocessed = [], []
+        for subcat in self.category_structure[category]:
+            subcat_done = all(
+                self.is_subcategory_processed(split, category, subcat)
+                for split in ['train', 'val', 'test']
+            )
+            if subcat_done:
+                processed.append(subcat)
+            else:
+                unprocessed.append(subcat)
+        return processed, unprocessed
 
     def get_sampling_strategy_for_subcategory(self, category, subcategory):
         print(f"\nSelect sampling strategy for subcategory '{subcategory}' under '{category}':")
@@ -140,6 +176,7 @@ class VideoPreprocessor:
         video_extensions = ['.mp4', '.avi', '.mov', '.mkv']
         video_files = [file for file in subcat_input_dir.iterdir()
                        if file.is_file() and file.suffix.lower() in video_extensions]
+
         print(f"  Processing {len(video_files)} videos in {category}/{subcategory} with '{sampling_strategy}' strategy...")
 
         processed_data = []
@@ -181,17 +218,32 @@ class VideoPreprocessor:
             with open(split_output_dir / 'metadata.json', 'w') as f:
                 json.dump(metadata, f, indent=2)
 
+            self.save_resume_checkpoint(category, subcategory)
             return len(processed_data)
         else:
             print(f"No videos processed in {category}/{subcategory} for split {split_name}.")
             return 0
 
     def interactive_process(self):
-        all_processed_categories = set()
+        resume_point = self.load_resume_checkpoint()
+        start_from_category = None
+        start_from_subcat = None
+        if resume_point:
+            start_from_category = resume_point["last_category"]
+            start_from_subcat = resume_point["last_subcategory"]
+            print(f"\nResuming from last checkpoint: Category '{start_from_category}', Subcategory '{start_from_subcat}'")
+
         while True:
             print("\nAvailable main categories:")
             for i, cat in enumerate(self.all_categories, 1):
-                print(f"  {i}. {cat}{' (processed)' if cat in all_processed_categories else ''}")
+                processed, unprocessed = self.get_category_progress(cat)
+                if len(unprocessed) == 0:
+                    status = "(fully processed)"
+                elif len(processed) == 0:
+                    status = "(not processed)"
+                else:
+                    status = f"(partially processed: Done {len(processed)}, Remaining {len(unprocessed)})"
+                print(f"  {i}. {cat} {status}")
             print("  0. Exit")
 
             try:
@@ -209,30 +261,41 @@ class VideoPreprocessor:
                 continue
 
             selected_category = self.all_categories[choice - 1]
-            if selected_category in all_processed_categories:
-                print(f"Category '{selected_category}' has already been processed.")
+            processed, unprocessed = self.get_category_progress(selected_category)
+
+            if len(unprocessed) == 0:
+                print(f"Category '{selected_category}' is already fully processed. Skipping...")
                 continue
 
             category_idx = self.all_categories.index(selected_category)
-            subcategories = self.category_structure[selected_category]
 
-            for subcat in subcategories:
+            # If resuming, skip subcategories until we reach last one
+            resume_mode = (selected_category == start_from_category) if start_from_category else False
+            skip = bool(resume_point)
+
+            for subcat in unprocessed:
+                if skip and resume_mode:
+                    if subcat == start_from_subcat:  # Skip the last processed subcategory
+                        print(f"Skipping already processed subcategory '{subcat}' due to resume checkpoint...")
+                        continue
+                    else:
+                        skip = False  # resume from here
+
                 sampling_strategy = self.get_sampling_strategy_for_subcategory(selected_category, subcat)
-                # Process each split for this subcategory
                 for split in ['train', 'val', 'test']:
                     augment = (split == 'train')
                     self.process_subcategory(split, selected_category, category_idx, subcat, augment, sampling_strategy)
 
-            all_processed_categories.add(selected_category)
-            print(f"Completed processing for category '{selected_category}'.")
+            print(f"Completed processing for remaining subcategories in '{selected_category}'.")
 
+        self.clear_resume_checkpoint()
         print("\nAll selected processing done. Goodbye!")
 
 
 def main():
     preprocessor = VideoPreprocessor(
-        input_dir="data/raw",           # Your raw videos root folder with train/test/val splits
-        output_dir="data/processed",
+        input_dir=r"C:\Users\rajla\NVIDIA-Video-Classification-Project\video_classification_project\data\raw",
+        output_dir=r"C:\Users\rajla\NVIDIA-Video-Classification-Project\video_classification_project\data\processed",
         frames_per_video=32,
         img_size=(224, 224),
         clip_duration=10

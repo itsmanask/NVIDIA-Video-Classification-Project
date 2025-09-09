@@ -24,8 +24,8 @@ venv/
 *.bak
 
 # Data folders (raw/processed, Dataset)
-data/raw/
-data/processed/
+video_classification_project/data/raw
+video_classification_project/data/processed
 Dataset/
 
 # Common video/image formats
