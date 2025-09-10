@@ -16,22 +16,22 @@ class VideoPreprocessor:
         self.img_size = img_size
         self.clip_duration = clip_duration
         
-        # Setup device
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {self.device}")
-        if torch.cuda.is_available():
-            print(f"GPU: {torch.cuda.get_device_name()}")
-            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        # Initialize processing mode
+        self.processing_mode = None
+        self.device = None
+        self.batch_size = 1  # Default for CPU
         
-        # Basic transforms (will be moved to GPU later)
+        # Basic CPU transforms
         self.transform = transforms.Compose([
             transforms.Resize(img_size),
             transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
         ])
         
-        # Normalization that we'll do on GPU
-        self.normalize_mean = torch.tensor([0.485, 0.456, 0.406]).to(self.device).view(3, 1, 1)
-        self.normalize_std = torch.tensor([0.229, 0.224, 0.225]).to(self.device).view(3, 1, 1)
+        # GPU-specific attributes (will be set only if GPU mode is chosen)
+        self.normalize_mean = None
+        self.normalize_std = None
         
         self.category_structure = {
             'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto',
@@ -49,12 +49,69 @@ class VideoPreprocessor:
         self.all_categories = list(self.category_structure.keys())
         self.resume_file = self.output_dir / "resume_checkpoint.json"
 
+    def setup_processing_mode(self):
+        """Setup CPU or GPU processing mode based on user choice"""
+        print("\n" + "="*50)
+        print("VIDEO PREPROCESSOR - PROCESSING MODE SELECTION")
+        print("="*50)
+        
+        print(f"\nProcessing Mode Options:")
+        print(f"1. CPU Mode - Compatible with all systems (slower but reliable)")
+        print(f"2. GPU Mode - Faster processing (requires CUDA-compatible GPU)")
+        
+        while True:
+            try:
+                choice = int(input(f"\nSelect processing mode (1 for CPU, 2 for GPU): ").strip())
+                if choice == 1:
+                    self.processing_mode = 'cpu'
+                    self.device = torch.device('cpu')
+                    self.batch_size = 1
+                    print(f"Selected: CPU Mode")
+                    break
+                elif choice == 2:
+                    # Check GPU availability only when GPU mode is selected
+                    if torch.cuda.is_available():
+                        self.processing_mode = 'gpu'
+                        self.device = torch.device('cuda')
+                        # Setup GPU-specific components
+                        self._setup_gpu_components()
+                        print(f"Selected: GPU Mode")
+                        print(f"GPU: {torch.cuda.get_device_name()}")
+                        break
+                    else:
+                        print("GPU not available on this system. Please select CPU mode (1).")
+                        continue
+                else:
+                    print("Invalid choice. Please enter 1 or 2.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+        
+        print(f"Using device: {self.device}")
+        print("="*50 + "\n")
+
+    def _setup_gpu_components(self):
+        """Setup GPU-specific components (only called when GPU mode is selected)"""
+        # GPU batch processing transforms (without normalization)
+        self.transform_gpu = transforms.Compose([
+            transforms.Resize(self.img_size),
+            transforms.ToTensor(),
+        ])
+        
+        # GPU normalization tensors
+        self.normalize_mean = torch.tensor([0.485, 0.456, 0.406]).to(self.device).view(3, 1, 1)
+        self.normalize_std = torch.tensor([0.229, 0.224, 0.225]).to(self.device).view(3, 1, 1)
+        
+        # Determine optimal batch size for GPU
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory
+        self.batch_size = min(16, max(4, int(gpu_memory / 4e9)))  # Conservative estimate
+        print(f"GPU batch size: {self.batch_size}")
+
     def normalize_on_gpu(self, tensor_batch):
-        """Perform normalization on GPU for better performance"""
+        """Perform normalization on GPU for better performance (GPU mode only)"""
         return (tensor_batch - self.normalize_mean) / self.normalize_std
 
     def apply_augmentations_gpu(self, tensor_batch):
-        """Apply augmentations on GPU tensors"""
+        """Apply augmentations on GPU tensors (GPU mode only)"""
         batch_size, channels, height, width = tensor_batch.shape
         
         # Random horizontal flip
@@ -167,8 +224,42 @@ class VideoPreprocessor:
         cap.release()
         return frames
 
-    def preprocess_video_batch_gpu(self, video_paths, augment=False, sampling_strategy='uniform', batch_size=8):
-        """Process multiple videos in batches on GPU for better efficiency"""
+    def preprocess_video_cpu(self, video_path, augment=False, sampling_strategy='uniform'):
+        """CPU-based video preprocessing (original method)"""
+        frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy)
+        if len(frames) == 0:
+            return None
+
+        processed_frames = []
+        for frame in frames:
+            pil_frame = Image.fromarray(frame)
+            if augment:
+                augment_transform = transforms.Compose([
+                    transforms.RandomHorizontalFlip(0.5),
+                    transforms.RandomRotation(15),
+                    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+                    transforms.RandomResizedCrop(self.img_size[0], scale=(0.8, 1.0)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+                ])
+                processed_frame = augment_transform(pil_frame)
+            else:
+                processed_frame = self.transform(pil_frame)
+            processed_frames.append(processed_frame)
+
+        if len(processed_frames) < self.frames_per_video:
+            padding_needed = self.frames_per_video - len(processed_frames)
+            zero_frame = torch.zeros_like(processed_frames[0])
+            processed_frames.extend([zero_frame] * padding_needed)
+        elif len(processed_frames) > self.frames_per_video:
+            processed_frames = processed_frames[:self.frames_per_video]
+
+        video_tensor = torch.stack(processed_frames)
+        return video_tensor
+
+    def preprocess_video_batch_gpu(self, video_paths, augment=False, sampling_strategy='uniform'):
+        """GPU-based batch video preprocessing"""
         all_processed_videos = []
         successful_filenames = []
         
@@ -176,11 +267,11 @@ class VideoPreprocessor:
         video_pbar = tqdm(total=len(video_paths), desc="Processing videos", unit="video")
         
         # Process videos in batches
-        total_batches = (len(video_paths) + batch_size - 1) // batch_size
+        total_batches = (len(video_paths) + self.batch_size - 1) // self.batch_size
         batch_pbar = tqdm(total=total_batches, desc="GPU batches", unit="batch", leave=False)
         
-        for i in range(0, len(video_paths), batch_size):
-            batch_paths = video_paths[i:i+batch_size]
+        for i in range(0, len(video_paths), self.batch_size):
+            batch_paths = video_paths[i:i+self.batch_size]
             batch_frames_list = []
             batch_filenames = []
             
@@ -208,7 +299,7 @@ class VideoPreprocessor:
                 for frame in frames:
                     pil_frame = Image.fromarray(frame)
                     # Basic resize and convert to tensor (CPU)
-                    tensor_frame = self.transform(pil_frame)
+                    tensor_frame = self.transform_gpu(pil_frame)
                     frame_tensors.append(tensor_frame)
                 
                 # Pad or trim to exact frame count
@@ -272,42 +363,54 @@ class VideoPreprocessor:
                        if file.is_file() and file.suffix.lower() in video_extensions]
 
         print(f"  Processing {len(video_files)} videos in {category}/{subcategory} ({split_name}) with '{sampling_strategy}' strategy...")
-        
-        # Determine batch size based on available GPU memory
-        if torch.cuda.is_available():
-            gpu_memory = torch.cuda.get_device_properties(0).total_memory
-            # Estimate batch size based on GPU memory (conservative estimate)
-            batch_size = min(16, max(4, int(gpu_memory / 4e9)))  # 4GB per batch
-        else:
-            batch_size = 4
-        
-        print(f"  Using batch size: {batch_size}")
+        print(f"  Mode: {self.processing_mode.upper()}")
 
-        # Process videos in batches
-        all_processed_videos, successful_filenames = self.preprocess_video_batch_gpu(
-            video_files, augment=augment, sampling_strategy=sampling_strategy, batch_size=batch_size
-        )
-        
-        if all_processed_videos:
-            # Create labels for successful videos only
-            labels = [category_idx] * len(all_processed_videos)
+        if self.processing_mode == 'gpu':
+            # GPU batch processing
+            all_processed_videos, successful_filenames = self.preprocess_video_batch_gpu(
+                video_files, augment=augment, sampling_strategy=sampling_strategy
+            )
             
-            # Stack all processed videos
-            videos_tensor = torch.stack(all_processed_videos)
-            
+            if all_processed_videos:
+                labels = [category_idx] * len(all_processed_videos)
+                videos_tensor = torch.stack(all_processed_videos)
+                processed_data = videos_tensor
+                filenames = successful_filenames
+        else:
+            # CPU processing (one by one)
+            processed_data = []
+            labels = []
+            filenames = []
+
+            for video_path in tqdm(video_files, desc=f"{category}-{subcategory}"):
+                try:
+                    video_tensor = self.preprocess_video_cpu(video_path, augment=augment, sampling_strategy=sampling_strategy)
+                    if video_tensor is not None:
+                        processed_data.append(video_tensor)
+                        labels.append(category_idx)
+                        filenames.append(video_path.name)
+                except Exception as e:
+                    print(f"Error processing {video_path}: {e}")
+                    continue
+
+            if processed_data:
+                processed_data = torch.stack(processed_data)
+
+        # Save results (common for both CPU and GPU)
+        if (self.processing_mode == 'gpu' and all_processed_videos) or (self.processing_mode == 'cpu' and processed_data):
             data_dict = {
-                'videos': videos_tensor,
+                'videos': processed_data,
                 'labels': torch.tensor(labels),
-                'filenames': successful_filenames,
+                'filenames': filenames,
                 'category_mapping': {category: category_idx}
             }
             
             output_path = split_output_dir / 'processed_data.pt'
             torch.save(data_dict, output_path)
-            print(f"  ✓ Saved {len(all_processed_videos)} processed videos to {output_path}")
+            print(f"  ✓ Saved {len(labels)} processed videos to {output_path}")
 
             metadata = {
-                'num_videos': len(all_processed_videos),
+                'num_videos': len(labels),
                 'frames_per_video': self.frames_per_video,
                 'image_size': self.img_size,
                 'category_mapping': {category: category_idx},
@@ -315,19 +418,128 @@ class VideoPreprocessor:
                 'selected_category': category,
                 'selected_subcategory': subcategory,
                 'sampling_strategy': sampling_strategy,
+                'processing_mode': self.processing_mode,
                 'device_used': str(self.device),
-                'batch_size_used': batch_size
+                'batch_size_used': self.batch_size if self.processing_mode == 'gpu' else 1
             }
             with open(split_output_dir / 'metadata.json', 'w') as f:
                 json.dump(metadata, f, indent=2)
 
             self.save_resume_checkpoint(category, subcategory)
-            return len(all_processed_videos)
+            return len(labels)
         else:
             print(f"  ✗ No videos processed in {category}/{subcategory} for split {split_name}.")
             return 0
 
-    def interactive_process(self):
+    def get_preprocessing_mode(self):
+        """Get preprocessing mode: interactive or bulk"""
+        print("\n" + "="*50)
+        print("PREPROCESSING MODE SELECTION")
+        print("="*50)
+        print("1. Interactive Mode - Configure sampling strategy for each subcategory one by one")
+        print("2. Bulk Mode - Configure all sampling strategies first, then process everything at once")
+        
+        while True:
+            try:
+                choice = int(input("\nSelect preprocessing mode (1 or 2): ").strip())
+                if choice == 1:
+                    return 'interactive'
+                elif choice == 2:
+                    return 'bulk'
+                else:
+                    print("Invalid choice. Please enter 1 or 2.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    def collect_bulk_strategies(self):
+        """Collect sampling strategies for all unprocessed subcategories"""
+        print("\n" + "="*40)
+        print("BULK STRATEGY CONFIGURATION")
+        print("="*40)
+        
+        strategies = {}
+        
+        for category in self.all_categories:
+            processed, unprocessed = self.get_category_progress(category)
+            if len(unprocessed) > 0:
+                print(f"\nCategory: {category}")
+                print(f"Unprocessed subcategories: {len(unprocessed)}")
+                
+                strategies[category] = {}
+                for subcat in unprocessed:
+                    strategy = self.get_sampling_strategy_for_subcategory(category, subcat)
+                    strategies[category][subcat] = strategy
+        
+        return strategies
+
+    def process_bulk_mode(self):
+        """Process all categories using pre-configured strategies"""
+        # Collect all strategies first
+        strategies = self.collect_bulk_strategies()
+        
+        if not strategies:
+            print("No unprocessed subcategories found.")
+            return
+        
+        print("\n" + "="*50)
+        print("STARTING BULK PROCESSING")
+        print("="*50)
+        
+        # Show summary of what will be processed
+        total_subcats = sum(len(subcats) for subcats in strategies.values())
+        print(f"Total subcategories to process: {total_subcats}")
+        
+        for category, subcats in strategies.items():
+            print(f"\n{category}: {list(subcats.keys())}")
+            for subcat, strategy in subcats.items():
+                print(f"  - {subcat}: {strategy}")
+        
+        input("\nPress Enter to start bulk processing...")
+        
+        resume_point = self.load_resume_checkpoint()
+        start_from_category = None
+        start_from_subcat = None
+        if resume_point:
+            start_from_category = resume_point["last_category"]
+            start_from_subcat = resume_point["last_subcategory"]
+            print(f"\nResuming from last checkpoint: Category '{start_from_category}', Subcategory '{start_from_subcat}'")
+        
+        # Process everything
+        for category, subcats in strategies.items():
+            category_idx = self.all_categories.index(category)
+            
+            # If resuming, skip categories/subcategories until we reach the checkpoint
+            resume_mode = (category == start_from_category) if start_from_category else False
+            skip = bool(resume_point)
+            
+            print(f"\n" + "="*30)
+            print(f"Processing Category: {category}")
+            print("="*30)
+            
+            for subcat, strategy in subcats.items():
+                if skip and resume_mode:
+                    if subcat == start_from_subcat:  # Skip the last processed subcategory
+                        print(f"Skipping already processed subcategory '{subcat}' due to resume checkpoint...")
+                        continue
+                    else:
+                        skip = False  # resume from here
+                
+                print(f"\nProcessing subcategory: {subcat} (strategy: {strategy})")
+                
+                # Process all splits for this subcategory
+                for split in ['train', 'val', 'test']:
+                    augment = (split == 'train')
+                    print(f"\n--- Processing {split} split ---")
+                    self.process_subcategory(split, category, category_idx, subcat, augment, strategy)
+            
+            print(f"Completed category: {category}")
+        
+        print("\n" + "="*50)
+        print("BULK PROCESSING COMPLETED!")
+        print("="*50)
+
+    def process_interactive_mode(self):
+        """Process categories interactively (original method)"""
         resume_point = self.load_resume_checkpoint()
         start_from_category = None
         start_from_subcat = None
@@ -394,6 +606,18 @@ class VideoPreprocessor:
 
             print(f"Completed processing for remaining subcategories in '{selected_category}'.")
 
+    def interactive_process(self):
+        # Setup processing mode first
+        self.setup_processing_mode()
+        
+        # Get preprocessing mode
+        preprocessing_mode = self.get_preprocessing_mode()
+        
+        if preprocessing_mode == 'interactive':
+            self.process_interactive_mode()
+        else:  # bulk mode
+            self.process_bulk_mode()
+        
         self.clear_resume_checkpoint()
         print("\nAll selected processing done. Goodbye!")
 
