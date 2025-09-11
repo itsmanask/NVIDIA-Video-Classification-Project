@@ -37,7 +37,7 @@ class VideoPreprocessor:
             'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto',
                           'The Walt Disney Company', 'Dragon Ball', 'Sonic the Hedgehog',
                           'One Piece', 'Walt Disney World', 'Bleach', 'Mickey Mouse'],
-            'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto V',
+            'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto', 'Grand Theft Auto V',
                        'World of Warcraft', 'League of Legends', 'Battlefield', 'RuneScape',
                        'Action-adventure game', 'FIFA 15', 'Counter-Strike', 'Need for Speed'],
             'Natural_Content': ['Animal', 'Pet', 'Fishing', 'Fish', 'Outdoor recreation', 'Dog',
