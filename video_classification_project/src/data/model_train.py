@@ -8,258 +8,393 @@ from pathlib import Path
 import json
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report, f1_score, precision_recall_fscore_support
 import warnings
 import pickle
+import psutil
+import gc
+import h5py
 warnings.filterwarnings('ignore')
 
 
-class VideoDataset(Dataset):
-    """Custom dataset for loading preprocessed videos with detailed progress tracking"""
-    def __init__(self, data_dir, split='train'):
+class MemoryEfficientVideoDataset(Dataset):
+    """Memory-efficient dataset that loads data on-demand with caching"""
+    
+    def __init__(self, data_dir, split='train', max_memory_gb=5.0, cache_size=100):
         print(f"\n{'='*60}")
-        print(f"INITIALIZING {split.upper()} DATASET")
+        print(f"INITIALIZING {split.upper()} DATASET (Memory-Efficient Mode)")
         print(f"{'='*60}")
         
         self.data_dir = Path(data_dir)
         self.split = split
-        self.videos = []
-        self.labels = []
-        self.filenames = []
+        self.max_memory_gb = max_memory_gb
+        self.cache_size = cache_size
+        
+        # Memory monitoring
+        self.memory_monitor = MemoryMonitor()
+        
+        # File index instead of loading all data
+        self.file_index = []  # List of (file_path, start_idx, end_idx)
+        self.labels_index = []  # List of labels for each sample
+        self.total_samples = 0
         self.category_mapping = {}
         
-        print(f"Searching for data in: {self.data_dir}")
-        print(f"Expected structure: {split}/<Category>/<Sub-Category>/processed_data.pt")
+        # LRU cache for recently accessed data
+        self.cache = {}
+        self.cache_order = []
         
-        # First, scan for all available data files
-        data_files = []
-        split_dir = self.data_dir / split
+        # Checkpoint file for resuming
+        self.checkpoint_file = self.data_dir / f"{split}_dataset_index.pkl"
         
+        # Try to load existing index
+        if self.checkpoint_file.exists():
+            print(f"📂 Found existing index: {self.checkpoint_file}")
+            try:
+                self._load_checkpoint()
+                print(f"✅ Loaded index with {self.total_samples:,} samples")
+                return
+            except Exception as e:
+                print(f"⚠️ Failed to load checkpoint: {e}")
+                print("🔄 Rebuilding index...")
+        
+        # Build index
+        self._build_index()
+        
+        # Save checkpoint
+        self._save_checkpoint()
+    
+    def _build_index(self):
+        """Build an index of all data files without loading them"""
+        print(f"\n🔍 Building dataset index...")
+        print(f"Memory limit: {self.max_memory_gb:.1f}GB")
+        
+        split_dir = self.data_dir / self.split
         if not split_dir.exists():
             print(f"❌ Split directory not found: {split_dir}")
-            print("Available directories:")
-            if self.data_dir.exists():
-                for item in self.data_dir.iterdir():
-                    if item.is_dir():
-                        print(f"  - {item.name}")
             return
         
-        print(f"✅ Found split directory: {split_dir}")
-        print(f"Scanning for data files...")
+        # Scan for data files
+        data_files = []
+        category_dirs = sorted([d for d in split_dir.glob("*") if d.is_dir()])
         
-        # Scan directory structure with progress
-        category_dirs = list(split_dir.glob("*"))
-        category_dirs = [d for d in category_dirs if d.is_dir()]
+        print(f"Found {len(category_dirs)} categories")
         
-        if not category_dirs:
-            print(f"❌ No category directories found in {split_dir}")
-            return
-        
-        print(f"Found {len(category_dirs)} category directories:")
-        for cat_dir in category_dirs:
-            print(f"  - {cat_dir.name}")
-        
-        # Collect all data files
-        for category_dir in tqdm(category_dirs, desc="Scanning categories", leave=False):
-            subcat_dirs = list(category_dir.glob("*"))
-            subcat_dirs = [d for d in subcat_dirs if d.is_dir()]
-            
-            print(f"\n📁 Category: {category_dir.name}")
-            print(f"   Found {len(subcat_dirs)} subcategories")
-            
-            for subcat_dir in subcat_dirs:
-                # Look for processed_data.pt first
-                data_file = subcat_dir / 'processed_data.pt'
-                if data_file.exists():
-                    data_files.append(data_file)
-                    print(f"   ✅ {subcat_dir.name}/processed_data.pt ({data_file.stat().st_size / 1e6:.1f}MB)")
-                else:
-                    # Look for individual .pt files
-                    pt_files = list(subcat_dir.glob("*.pt"))
-                    if pt_files:
-                        data_files.extend(pt_files)
-                        total_size = sum(f.stat().st_size for f in pt_files) / 1e6
-                        print(f"   ⚠️  {subcat_dir.name}: {len(pt_files)} individual .pt files ({total_size:.1f}MB)")
+        # Collect all data files with size info
+        with tqdm(total=len(category_dirs), desc="Scanning categories") as pbar:
+            for category_dir in category_dirs:
+                pbar.set_description(f"Scanning {category_dir.name}")
+                subcat_dirs = sorted([d for d in category_dir.glob("*") if d.is_dir()])
+                
+                for subcat_dir in subcat_dirs:
+                    # Look for processed_data.pt
+                    data_file = subcat_dir / 'processed_data.pt'
+                    if data_file.exists():
+                        file_size_gb = data_file.stat().st_size / 1e9
+                        data_files.append((data_file, file_size_gb))
                     else:
-                        print(f"   ❌ {subcat_dir.name}: No .pt files found")
+                        # Look for individual .pt files
+                        pt_files = sorted(subcat_dir.glob("*.pt"))
+                        for pt_file in pt_files:
+                            file_size_gb = pt_file.stat().st_size / 1e9
+                            data_files.append((pt_file, file_size_gb))
+                
+                pbar.update(1)
         
         if not data_files:
-            print(f"\n❌ No data files found in {split} split!")
-            print("Make sure your data is preprocessed and saved as .pt files.")
+            print(f"❌ No data files found!")
             return
         
-        print(f"\n🔍 Found {len(data_files)} data files to load")
-        total_size = sum(f.stat().st_size for f in data_files) / 1e6
-        print(f"📊 Total data size: {total_size:.1f}MB")
-        print(f"⏳ Starting data loading...")
+        total_size_gb = sum(size for _, size in data_files)
+        print(f"\n📊 Found {len(data_files)} data files")
+        print(f"💾 Total size: {total_size_gb:.2f}GB")
         
-        # Load all data files with detailed progress
-        failed_files = []
-        loaded_files = 0
+        # Sort files by size for efficient loading
+        data_files.sort(key=lambda x: x[1])
         
-        progress_bar = tqdm(data_files, desc="Loading data files", unit="file")
+        # Build index with progress and ETA
+        print("\n📝 Building file index...")
+        start_time = time.time()
         
-        for data_file in progress_bar:
-            try:
-                # Update progress bar with current file info
-                file_size = data_file.stat().st_size / 1e6
-                progress_bar.set_postfix({
-                    'file': data_file.name[:20] + '...' if len(data_file.name) > 20 else data_file.name,
-                    'size': f'{file_size:.1f}MB',
-                    'loaded': loaded_files
-                })
+        with tqdm(total=len(data_files), desc="Indexing files") as pbar:
+            for file_idx, (data_file, file_size_gb) in enumerate(data_files):
+                # Update progress with ETA
+                if file_idx > 0:
+                    elapsed = time.time() - start_time
+                    eta = elapsed * (len(data_files) - file_idx) / file_idx
+                    pbar.set_postfix({
+                        'file': data_file.name[:20],
+                        'size': f'{file_size_gb:.2f}GB',
+                        'ETA': str(timedelta(seconds=int(eta)))
+                    })
                 
-                # Load the data
-                start_time = time.time()
-                data = torch.load(data_file, map_location='cpu')
-                load_time = time.time() - start_time
-                
-                # Handle different data formats
-                if isinstance(data, dict):
-                    if 'videos' in data and 'labels' in data:
-                        # Batch format
-                        self.videos.append(data['videos'])
-                        self.labels.append(data['labels'])
-                        if 'filenames' in data:
-                            self.filenames.extend(data['filenames'])
-                        if 'category_mapping' in data:
-                            for cat, idx in data['category_mapping'].items():
-                                self.category_mapping[cat] = idx
+                try:
+                    # Quick load to get metadata
+                    with torch.serialization._open_file_like(data_file, 'rb') as f:
+                        data = torch.load(f, map_location='cpu')
+                    
+                    if isinstance(data, dict) and 'videos' in data and 'labels' in data:
+                        num_samples = len(data['videos'])
                         
-                        progress_bar.set_postfix({
-                            'file': data_file.name[:15] + '...',
-                            'size': f'{file_size:.1f}MB',
-                            'videos': len(data['videos']),
-                            'time': f'{load_time:.2f}s'
+                        # Store file reference
+                        self.file_index.append({
+                            'path': data_file,
+                            'start_idx': self.total_samples,
+                            'end_idx': self.total_samples + num_samples,
+                            'size_gb': file_size_gb,
+                            'num_samples': num_samples
                         })
-                    else:
-                        print(f"\n⚠️  Unexpected data format in {data_file}")
-                        failed_files.append(data_file)
-                        continue
-                else:
-                    # Individual tensor files
-                    print(f"\n⚠️  Individual tensor format not fully supported: {data_file}")
-                    failed_files.append(data_file)
+                        
+                        # Store labels separately (small memory footprint)
+                        if isinstance(data['labels'], torch.Tensor):
+                            self.labels_index.extend(data['labels'].tolist())
+                        else:
+                            self.labels_index.extend(data['labels'])
+                        
+                        # Update category mapping
+                        if 'category_mapping' in data:
+                            self.category_mapping.update(data['category_mapping'])
+                        
+                        self.total_samples += num_samples
+                        
+                        # Clear data from memory
+                        del data
+                        gc.collect()
+                        
+                    pbar.update(1)
+                    
+                except Exception as e:
+                    print(f"\n⚠️ Failed to index {data_file.name}: {e}")
+                    pbar.update(1)
                     continue
-                
-                loaded_files += 1
-                
-            except Exception as e:
-                print(f"\n❌ Failed to load {data_file}: {str(e)}")
-                failed_files.append(data_file)
-                continue
         
-        progress_bar.close()
+        elapsed_time = time.time() - start_time
+        print(f"\n✅ Indexing completed in {timedelta(seconds=int(elapsed_time))}")
+        print(f"📊 Total samples indexed: {self.total_samples:,}")
         
-        # Consolidate loaded data
-        if self.videos:
-            print(f"\n⚙️  Consolidating {len(self.videos)} batches...")
-            
-            # Show memory usage before concatenation
-            if torch.cuda.is_available():
-                gpu_memory_before = torch.cuda.memory_allocated() / 1e9
-                print(f"📈 GPU memory before concatenation: {gpu_memory_before:.2f}GB")
-            
-            consolidation_start = time.time()
-            
-            try:
-                self.videos = torch.cat(self.videos, dim=0)
-                self.labels = torch.cat(self.labels, dim=0)
-                
-                consolidation_time = time.time() - consolidation_start
-                print(f"⏱️  Consolidation time: {consolidation_time:.2f}s")
-                
-                if torch.cuda.is_available():
-                    gpu_memory_after = torch.cuda.memory_allocated() / 1e9
-                    print(f"📈 GPU memory after consolidation: {gpu_memory_after:.2f}GB")
-                
-            except Exception as e:
-                print(f"❌ Failed to consolidate data: {str(e)}")
-                print("This might be due to insufficient memory or incompatible tensor shapes")
-                return
-            
-            # Final validation and summary
-            print(f"\n{'='*60}")
-            print(f"DATASET LOADING COMPLETED")
-            print(f"{'='*60}")
-            print(f"✅ Successfully loaded: {loaded_files}/{len(data_files)} files")
-            if failed_files:
-                print(f"❌ Failed to load: {len(failed_files)} files")
-            
-            print(f"\n📊 DATASET SUMMARY:")
-            print(f"   Total videos: {len(self.videos):,}")
-            print(f"   Video shape: {self.videos.shape}")
-            print(f"   Labels shape: {self.labels.shape}")
-            print(f"   Memory usage: {self.videos.numel() * 4 / 1e9:.2f}GB")
-            print(f"   Categories: {len(self.category_mapping)}")
-            
-            if self.category_mapping:
-                print(f"\n🏷️  CATEGORY MAPPING:")
-                for cat, idx in sorted(self.category_mapping.items(), key=lambda x: x[1]):
-                    count = (self.labels == idx).sum().item()
-                    print(f"   {idx}: {cat} ({count:,} samples)")
-            
-            # Data validation
-            print(f"\n🔍 DATA VALIDATION:")
-            if len(self.videos) != len(self.labels):
-                print(f"❌ Mismatch: {len(self.videos)} videos but {len(self.labels)} labels")
-                raise ValueError(f"Data mismatch: videos and labels have different lengths")
-            else:
-                print(f"✅ Videos and labels match: {len(self.videos)} samples")
-            
-            unique_labels = set(self.labels.tolist())
-            expected_labels = len(self.category_mapping)
-            if len(unique_labels) != expected_labels:
-                print(f"⚠️  Expected {expected_labels} unique labels, found {len(unique_labels)}")
-                print(f"   Found labels: {sorted(unique_labels)}")
-                print(f"   Expected labels: {sorted(self.category_mapping.values())}")
-            else:
-                print(f"✅ Label validation passed: {len(unique_labels)} categories")
-            
-            # Memory and performance info
-            tensor_memory = self.videos.numel() * self.videos.element_size() / 1e9
-            print(f"\n💾 MEMORY USAGE:")
-            print(f"   Videos tensor: {tensor_memory:.2f}GB")
-            print(f"   Est. batch memory (batch=4): {tensor_memory * 4 / len(self.videos):.2f}GB")
-            
-            if failed_files:
-                print(f"\n❌ FAILED FILES ({len(failed_files)}):")
-                for failed_file in failed_files[:10]:  # Show first 10
-                    print(f"   - {failed_file}")
-                if len(failed_files) > 10:
-                    print(f"   ... and {len(failed_files) - 10} more")
+        # Validate index
+        if self.total_samples != len(self.labels_index):
+            print(f"⚠️ Warning: Label count mismatch!")
         
-        else:
-            print(f"\n❌ NO DATA LOADED!")
-            print("Possible issues:")
-            print("1. Data files are corrupted or in wrong format")
-            print("2. Insufficient memory to load data")
-            print("3. Data directory structure is incorrect")
-            print(f"\nExpected structure:")
-            print(f"  {self.data_dir}/")
-            print(f"  ├── {split}/")
-            print(f"  │   ├── Category1/")
-            print(f"  │   │   └── SubCategory1/")
-            print(f"  │   │       └── processed_data.pt")
-            print(f"  │   └── Category2/")
-            print(f"  │       └── SubCategory2/")
-            print(f"  │           └── processed_data.pt")
+        # Display category distribution
+        if self.category_mapping:
+            print(f"\n🏷️ Category Distribution:")
+            label_counts = {}
+            for label in self.labels_index:
+                label_counts[label] = label_counts.get(label, 0) + 1
+            
+            for cat, idx in sorted(self.category_mapping.items(), key=lambda x: x[1]):
+                count = label_counts.get(idx, 0)
+                percentage = (count / self.total_samples * 100) if self.total_samples > 0 else 0
+                print(f"   {idx}: {cat} - {count:,} samples ({percentage:.1f}%)")
+    
+    def _save_checkpoint(self):
+        """Save index to disk for fast loading"""
+        try:
+            checkpoint_data = {
+                'file_index': self.file_index,
+                'labels_index': self.labels_index,
+                'total_samples': self.total_samples,
+                'category_mapping': self.category_mapping,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            with open(self.checkpoint_file, 'wb') as f:
+                pickle.dump(checkpoint_data, f)
+            
+            print(f"💾 Saved index checkpoint: {self.checkpoint_file}")
+        except Exception as e:
+            print(f"⚠️ Failed to save checkpoint: {e}")
+    
+    def _load_checkpoint(self):
+        """Load index from disk"""
+        with open(self.checkpoint_file, 'rb') as f:
+            checkpoint_data = pickle.load(f)
+        
+        self.file_index = checkpoint_data['file_index']
+        self.labels_index = checkpoint_data['labels_index']
+        self.total_samples = checkpoint_data['total_samples']
+        self.category_mapping = checkpoint_data['category_mapping']
+        
+        print(f"📅 Index created: {checkpoint_data['timestamp']}")
+    
+    def _load_file_data(self, file_info):
+        """Load data from a specific file with memory monitoring"""
+        file_path = file_info['path']
+        
+        # Check memory before loading
+        available_memory = self.memory_monitor.get_available_memory_gb()
+        if file_info['size_gb'] > available_memory * 0.8:  # Use only 80% of available
+            print(f"\n⚠️ Large file detected: {file_info['size_gb']:.2f}GB")
+            print(f"   Available memory: {available_memory:.2f}GB")
+            
+            # Clear cache to free memory
+            self._clear_cache()
+            gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
+        # Load data
+        data = torch.load(file_path, map_location='cpu')
+        
+        if isinstance(data, dict) and 'videos' in data:
+            return data['videos']
+        
+        return None
+    
+    def _clear_cache(self):
+        """Clear the LRU cache"""
+        self.cache.clear()
+        self.cache_order.clear()
+        gc.collect()
+    
+    def _get_file_for_idx(self, idx):
+        """Find which file contains the given index"""
+        for file_info in self.file_index:
+            if file_info['start_idx'] <= idx < file_info['end_idx']:
+                return file_info
+        return None
     
     def __len__(self):
-        return len(self.videos) if hasattr(self, 'videos') and len(self.videos) > 0 else 0
+        return self.total_samples
     
     def __getitem__(self, idx):
-        if len(self.videos) == 0:
-            raise RuntimeError("Dataset is empty. Check data loading logs above.")
-        return self.videos[idx], self.labels[idx]
+        if idx >= self.total_samples:
+            raise IndexError(f"Index {idx} out of range (0-{self.total_samples-1})")
+        
+        # Find the file containing this index
+        file_info = self._get_file_for_idx(idx)
+        if file_info is None:
+            raise RuntimeError(f"Could not find file for index {idx}")
+        
+        # Check cache first
+        file_path = str(file_info['path'])
+        if file_path in self.cache:
+            # Move to end (most recently used)
+            self.cache_order.remove(file_path)
+            self.cache_order.append(file_path)
+            videos = self.cache[file_path]
+        else:
+            # Load file data
+            videos = self._load_file_data(file_info)
+            
+            if videos is None:
+                raise RuntimeError(f"Failed to load data from {file_path}")
+            
+            # Add to cache
+            if len(self.cache) >= self.cache_size:
+                # Remove least recently used
+                oldest = self.cache_order.pop(0)
+                del self.cache[oldest]
+            
+            self.cache[file_path] = videos
+            self.cache_order.append(file_path)
+        
+        # Get the specific sample
+        local_idx = idx - file_info['start_idx']
+        video = videos[local_idx]
+        label = self.labels_index[idx]
+        
+        return video, torch.tensor(label, dtype=torch.long)
+
+
+class MemoryMonitor:
+    """Monitor system memory usage"""
+    
+    def __init__(self):
+        self.process = psutil.Process()
+    
+    def get_memory_info(self):
+        """Get detailed memory information"""
+        mem = psutil.virtual_memory()
+        gpu_mem = None
+        
+        if torch.cuda.is_available():
+            gpu_mem = {
+                'allocated': torch.cuda.memory_allocated() / 1e9,
+                'reserved': torch.cuda.memory_reserved() / 1e9,
+                'total': torch.cuda.get_device_properties(0).total_memory / 1e9
+            }
+        
+        return {
+            'ram': {
+                'total': mem.total / 1e9,
+                'available': mem.available / 1e9,
+                'used': mem.used / 1e9,
+                'percent': mem.percent
+            },
+            'gpu': gpu_mem,
+            'process': self.process.memory_info().rss / 1e9
+        }
+    
+    def get_available_memory_gb(self):
+        """Get available RAM in GB"""
+        return psutil.virtual_memory().available / 1e9
+    
+    def print_memory_status(self):
+        """Print current memory status"""
+        info = self.get_memory_info()
+        
+        print(f"\n💾 Memory Status:")
+        print(f"   RAM: {info['ram']['used']:.1f}/{info['ram']['total']:.1f}GB ({info['ram']['percent']:.1f}%)")
+        print(f"   Available: {info['ram']['available']:.1f}GB")
+        print(f"   Process: {info['process']:.1f}GB")
+        
+        if info['gpu']:
+            print(f"   GPU: {info['gpu']['allocated']:.1f}/{info['gpu']['total']:.1f}GB")
+
+
+class CheckpointManager:
+    """Manage training checkpoints for resuming"""
+    
+    def __init__(self, checkpoint_dir):
+        self.checkpoint_dir = Path(checkpoint_dir)
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_file = self.checkpoint_dir / 'training_checkpoint.pt'
+        self.best_model_file = self.checkpoint_dir / 'best_model.pt'
+    
+    def save_checkpoint(self, epoch, model, optimizer, scheduler, metrics, is_best=False):
+        """Save training checkpoint"""
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+            'metrics': metrics,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        torch.save(checkpoint, self.checkpoint_file)
+        
+        if is_best:
+            torch.save(checkpoint, self.best_model_file)
+            print(f"💾 Saved best model (epoch {epoch})")
+    
+    def load_checkpoint(self, model, optimizer=None, scheduler=None):
+        """Load training checkpoint"""
+        if not self.checkpoint_file.exists():
+            return None
+        
+        checkpoint = torch.load(self.checkpoint_file, map_location='cpu')
+        
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        if optimizer and 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        if scheduler and checkpoint.get('scheduler_state_dict'):
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
+        print(f"📂 Loaded checkpoint from epoch {checkpoint['epoch']}")
+        print(f"   Created: {checkpoint['timestamp']}")
+        
+        return checkpoint
 
 
 class EnhancedCNNLSTM(nn.Module):
-    """Enhanced CNN-LSTM architecture with attention mechanism for maximum accuracy"""
+    """Enhanced CNN-LSTM architecture with attention mechanism"""
     def __init__(self, num_classes=4, hidden_dim=1024, num_layers=4, dropout=0.2, 
                  backbone='efficientnet_b4', bidirectional=True, attention=True):
         super(EnhancedCNNLSTM, self).__init__()
@@ -270,37 +405,27 @@ class EnhancedCNNLSTM(nn.Module):
         self.bidirectional = bidirectional
         self.use_attention = attention
         
-        # Select CNN backbone - EfficientNet-B4 for best accuracy
+        # Select CNN backbone
         if backbone == 'efficientnet_b4':
             self.cnn = models.efficientnet_b4(weights='IMAGENET1K_V1')
             self.feature_dim = self.cnn.classifier[1].in_features
             self.cnn.classifier = nn.Identity()
-        elif backbone == 'densenet161':
-            self.cnn = models.densenet161(weights='IMAGENET1K_V1')
-            self.feature_dim = self.cnn.classifier.in_features
-            self.cnn.classifier = nn.Identity()
-        elif backbone == 'resnet101':
-            self.cnn = models.resnet101(weights='IMAGENET1K_V1')
-            self.feature_dim = self.cnn.fc.in_features
-            self.cnn.fc = nn.Identity()
-        else:  # resnet50 fallback
+        elif backbone == 'resnet50':
             self.cnn = models.resnet50(weights='IMAGENET1K_V1')
             self.feature_dim = self.cnn.fc.in_features
             self.cnn.fc = nn.Identity()
+        else:
+            raise ValueError(f"Unknown backbone: {backbone}")
         
-        # Feature projection with residual connection
+        # Feature projection
         self.feature_projection = nn.Sequential(
             nn.Linear(self.feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
         
-        # Multi-layer LSTM with higher capacity
+        # LSTM
         self.lstm = nn.LSTM(
             input_size=hidden_dim,
             hidden_size=hidden_dim,
@@ -312,7 +437,7 @@ class EnhancedCNNLSTM(nn.Module):
         
         lstm_output_dim = hidden_dim * 2 if bidirectional else hidden_dim
         
-        # Multi-head attention mechanism
+        # Attention
         if self.use_attention:
             self.multihead_attn = nn.MultiheadAttention(
                 embed_dim=lstm_output_dim,
@@ -320,10 +445,9 @@ class EnhancedCNNLSTM(nn.Module):
                 dropout=dropout,
                 batch_first=True
             )
-            
             self.attention_norm = nn.LayerNorm(lstm_output_dim)
         
-        # Enhanced classifier with skip connections
+        # Classifier
         self.classifier = nn.Sequential(
             nn.Linear(lstm_output_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -333,248 +457,658 @@ class EnhancedCNNLSTM(nn.Module):
             nn.LayerNorm(hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, hidden_dim // 4),
-            nn.LayerNorm(hidden_dim // 4),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 4, num_classes)
+            nn.Linear(hidden_dim // 2, num_classes)
         )
         
-        # Initialize weights
         self._initialize_weights()
-        
+    
     def _initialize_weights(self):
-        """Initialize model weights for better convergence"""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-            elif isinstance(m, (nn.LayerNorm, nn.BatchNorm1d)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-        
+    
     def forward(self, x):
         batch_size, num_frames, channels, height, width = x.shape
         
-        # Process each frame through CNN
+        # Process frames through CNN
         x = x.view(-1, channels, height, width)
         features = self.cnn(x)
         features = features.view(batch_size * num_frames, -1)
         features = self.feature_projection(features)
         features = features.view(batch_size, num_frames, -1)
         
-        # Process temporal features through LSTM
+        # LSTM processing
         lstm_out, _ = self.lstm(features)
         
         if self.use_attention:
-            # Apply multi-head self-attention
             attended_features, _ = self.multihead_attn(lstm_out, lstm_out, lstm_out)
-            attended_features = self.attention_norm(attended_features + lstm_out)  # Residual connection
-            # Global average pooling over sequence
+            attended_features = self.attention_norm(attended_features + lstm_out)
             attended_features = attended_features.mean(dim=1)
         else:
-            # Use last hidden state
             attended_features = lstm_out[:, -1, :]
         
-        # Final classification
         output = self.classifier(attended_features)
         return output
 
 
 class VideoClassificationTrainer:
-    def __init__(self, data_dir, output_dir, device='cuda'):
+    """Main trainer class with memory management and checkpointing"""
+    
+    def __init__(self, data_dir, output_dir, device='cuda', max_memory_gb=5.0):
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        self.max_memory_gb = max_memory_gb
         
-        # Auto-detect GPU and enable optimizations
+        # Memory monitor
+        self.memory_monitor = MemoryMonitor()
+        
+        # Checkpoint manager
+        self.checkpoint_manager = CheckpointManager(self.output_dir / 'checkpoints')
+        
+        # Setup device optimizations
         self._setup_device_optimizations()
         
+        # Training history
+        self.history = {
+            'train_loss': [],
+            'train_acc': [],
+            'val_loss': [],
+            'val_acc': []
+        }
+    
     def _setup_device_optimizations(self):
-        """Auto-detect GPU and enable optimizations"""
+        """Setup GPU optimizations"""
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name()
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
             
-            print(f"\n🚀 GPU DETECTED")
+            print(f"\n🚀 GPU Configuration")
             print(f"   Device: {gpu_name}")
             print(f"   Memory: {gpu_memory:.1f}GB")
-            print(f"   CUDA Version: {torch.version.cuda}")
+            print(f"   CUDA: {torch.version.cuda}")
             
-            # Enable mixed precision for all modern GPUs
+            # Enable mixed precision
             self.scaler = torch.cuda.amp.GradScaler()
-            print(f"   ✅ Mixed precision enabled")
             
-            # Enable optimized attention for Ampere+ GPUs (RTX 30/40 series)
-            if any(x in gpu_name for x in ["RTX 40", "RTX 30", "A100", "RTX 4060"]):
-                torch.backends.cuda.enable_flash_sdp(True)
-                print(f"   ✅ Flash Attention enabled")
+            # Enable optimizations
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            
+            print(f"   ✅ Mixed precision enabled")
+            print(f"   ✅ TF32 enabled")
         else:
-            print(f"\n⚠️  Using CPU - training will be significantly slower")
+            print(f"\n⚠️ Using CPU - training will be slow")
             self.scaler = None
     
     def create_data_loaders(self):
-        """Create optimized data loaders with progress tracking"""
+        """Create memory-efficient data loaders"""
         print(f"\n{'='*60}")
         print(f"CREATING DATA LOADERS")
         print(f"{'='*60}")
         
-        # Create datasets with progress tracking
-        train_dataset = VideoDataset(self.data_dir, split='train')
-        val_dataset = VideoDataset(self.data_dir, split='val')
-        test_dataset = VideoDataset(self.data_dir, split='test')
+        # Show current memory status
+        self.memory_monitor.print_memory_status()
         
-        # Check if datasets loaded successfully
-        datasets_info = [
-            ('Train', train_dataset, len(train_dataset)),
-            ('Validation', val_dataset, len(val_dataset)),
-            ('Test', test_dataset, len(test_dataset))
-        ]
+        # Create datasets
+        train_dataset = MemoryEfficientVideoDataset(
+            self.data_dir, 
+            split='train',
+            max_memory_gb=self.max_memory_gb
+        )
         
-        print(f"\n📊 DATASET SUMMARY:")
-        total_samples = 0
-        for name, dataset, size in datasets_info:
-            if size > 0:
-                print(f"   ✅ {name}: {size:,} samples")
-                total_samples += size
-            else:
-                print(f"   ❌ {name}: No samples loaded!")
+        val_dataset = MemoryEfficientVideoDataset(
+            self.data_dir,
+            split='val',
+            max_memory_gb=self.max_memory_gb
+        )
         
-        print(f"   📈 Total: {total_samples:,} samples")
+        test_dataset = MemoryEfficientVideoDataset(
+            self.data_dir,
+            split='test',
+            max_memory_gb=self.max_memory_gb
+        )
         
-        if total_samples == 0:
-            raise RuntimeError("No data loaded! Please check your data directory and preprocessing.")
-        
-        # Optimized DataLoader settings
+        # Determine optimal batch size based on available memory
         if self.device.type == 'cuda':
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
             
-            # Adaptive batch size based on GPU memory
-            if gpu_memory >= 12:  # RTX 4070 Ti and above
-                batch_size = 8
-            elif gpu_memory >= 8:  # RTX 4060 Ti, RTX 3070
-                batch_size = 4
-            else:  # RTX 4060, RTX 3060
+            # Conservative batch sizes for RTX 4060 (8GB)
+            if gpu_memory >= 8:
+                batch_size = 4  # Start conservative
+            else:
                 batch_size = 2
-            
-            num_workers = min(8, os.cpu_count() // 2)
-            pin_memory = True
         else:
             batch_size = 1
-            num_workers = 0
-            pin_memory = False
         
-        print(f"\n⚙️  DATALOADER CONFIGURATION:")
+        # Adjust workers based on available RAM
+        available_ram = self.memory_monitor.get_available_memory_gb()
+        if available_ram > 6:
+            num_workers = 4
+        elif available_ram > 4:
+            num_workers = 2
+        else:
+            num_workers = 0
+        
+        print(f"\n⚙️ DataLoader Configuration:")
         print(f"   Batch size: {batch_size}")
         print(f"   Workers: {num_workers}")
-        print(f"   Pin memory: {pin_memory}")
+        print(f"   Available RAM: {available_ram:.1f}GB")
         
-        # Create DataLoaders
-        dataloaders = []
-        for name, dataset, _ in datasets_info:
-            if len(dataset) > 0:
-                is_train = (name == 'Train')
-                loader = DataLoader(
-                    dataset,
-                    batch_size=batch_size,
-                    shuffle=is_train,
-                    num_workers=num_workers,
-                    pin_memory=pin_memory,
-                    drop_last=is_train,
-                    persistent_workers=num_workers > 0
+        # Create loaders
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=(self.device.type == 'cuda'),
+            persistent_workers=(num_workers > 0),
+            prefetch_factor=2 if num_workers > 0 else None
+        )
+        
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=(self.device.type == 'cuda'),
+            persistent_workers=(num_workers > 0),
+            prefetch_factor=2 if num_workers > 0 else None
+        )
+        
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=(self.device.type == 'cuda')
+        )
+        
+        print(f"\n📊 Dataset Summary:")
+        print(f"   Train: {len(train_dataset):,} samples ({len(train_loader)} batches)")
+        print(f"   Val: {len(val_dataset):,} samples ({len(val_loader)} batches)")
+        print(f"   Test: {len(test_dataset):,} samples ({len(test_loader)} batches)")
+        
+        return train_loader, val_loader, test_loader
+    
+    def train_epoch(self, model, loader, criterion, optimizer, epoch):
+        """Train for one epoch with progress tracking"""
+        model.train()
+        
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        # Calculate estimated time
+        batch_times = []
+        start_time = time.time()
+        
+        with tqdm(total=len(loader), desc=f"Epoch {epoch}") as pbar:
+            for batch_idx, (videos, labels) in enumerate(loader):
+                batch_start = time.time()
+                
+                # Move to device
+                videos = videos.to(self.device)
+                labels = labels.to(self.device)
+                
+                # Forward pass with mixed precision
+                if self.scaler:
+                    with torch.cuda.amp.autocast():
+                        outputs = model(videos)
+                        loss = criterion(outputs, labels)
+                    
+                    # Backward pass
+                    optimizer.zero_grad()
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(optimizer)
+                    self.scaler.update()
+                else:
+                    outputs = model(videos)
+                    loss = criterion(outputs, labels)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                
+                # Statistics
+                running_loss += loss.item()
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
+                
+                # Update progress bar
+                batch_time = time.time() - batch_start
+                batch_times.append(batch_time)
+                
+                # Calculate ETA
+                avg_batch_time = np.mean(batch_times[-100:])  # Use last 100 batches
+                remaining_batches = len(loader) - batch_idx - 1
+                eta = remaining_batches * avg_batch_time
+                
+                # Memory usage
+                if self.device.type == 'cuda':
+                    gpu_mem = torch.cuda.memory_allocated() / 1e9
+                else:
+                    gpu_mem = 0
+                
+                pbar.set_postfix({
+                    'loss': f'{loss.item():.4f}',
+                    'acc': f'{100.*correct/total:.2f}%',
+                    'gpu': f'{gpu_mem:.1f}GB',
+                    'ETA': str(timedelta(seconds=int(eta)))
+                })
+                pbar.update(1)
+                
+                # Periodic memory cleanup
+                if batch_idx % 50 == 0:
+                    gc.collect()
+                    if self.device.type == 'cuda':
+                        torch.cuda.empty_cache()
+        
+        epoch_loss = running_loss / len(loader)
+        epoch_acc = 100. * correct / total
+        
+        return epoch_loss, epoch_acc
+    
+    def validate(self, model, loader, criterion):
+        """Validate model with progress tracking"""
+        model.eval()
+        
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            with tqdm(total=len(loader), desc="Validation") as pbar:
+                for videos, labels in loader:
+                    videos = videos.to(self.device)
+                    labels = labels.to(self.device)
+                    
+                    if self.scaler:
+                        with torch.cuda.amp.autocast():
+                            outputs = model(videos)
+                            loss = criterion(outputs, labels)
+                    else:
+                        outputs = model(videos)
+                        loss = criterion(outputs, labels)
+                    
+                    running_loss += loss.item()
+                    _, predicted = outputs.max(1)
+                    total += labels.size(0)
+                    correct += predicted.eq(labels).sum().item()
+                    
+                    pbar.set_postfix({
+                        'loss': f'{loss.item():.4f}',
+                        'acc': f'{100.*correct/total:.2f}%'
+                    })
+                    pbar.update(1)
+        
+        val_loss = running_loss / len(loader)
+        val_acc = 100. * correct / total
+        
+        return val_loss, val_acc
+    
+    def train(self, num_epochs=50, resume=True):
+        """Main training loop with checkpointing"""
+        print(f"\n{'='*60}")
+        print(f"TRAINING CONFIGURATION")
+        print(f"{'='*60}")
+        
+        # Create data loaders
+        train_loader, val_loader, test_loader = self.create_data_loaders()
+        
+        if len(train_loader) == 0:
+            print("❌ No training data available!")
+            return
+        
+        # Initialize model
+        num_classes = len(train_loader.dataset.category_mapping) if train_loader.dataset.category_mapping else 4
+        
+        model = EnhancedCNNLSTM(
+            num_classes=num_classes,
+            hidden_dim=512,  # Reduced for memory efficiency
+            num_layers=3,
+            dropout=0.3,
+            backbone='resnet50',  # More memory efficient than efficientnet_b4
+            bidirectional=True,
+            attention=True
+        ).to(self.device)
+        
+        # Loss and optimizer
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+        
+        # Load checkpoint if resuming
+        start_epoch = 0
+        best_val_acc = 0
+        
+        if resume:
+            checkpoint = self.checkpoint_manager.load_checkpoint(model, optimizer, scheduler)
+            if checkpoint:
+                start_epoch = checkpoint['epoch'] + 1
+                best_val_acc = checkpoint['metrics'].get('best_val_acc', 0)
+                self.history = checkpoint['metrics'].get('history', self.history)
+                print(f"📂 Resuming from epoch {start_epoch}")
+                print(f"   Best validation accuracy: {best_val_acc:.2f}%")
+        
+        # Model summary
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        
+        print(f"\n🤖 Model Configuration:")
+        print(f"   Total parameters: {total_params:,}")
+        print(f"   Trainable parameters: {trainable_params:,}")
+        print(f"   Model size: {total_params * 4 / 1e9:.2f}GB")
+        
+        print(f"\n🎯 Training Settings:")
+        print(f"   Epochs: {start_epoch} -> {num_epochs}")
+        print(f"   Learning rate: {optimizer.param_groups[0]['lr']:.6f}")
+        print(f"   Device: {self.device}")
+        
+        # Training loop
+        print(f"\n{'='*60}")
+        print(f"STARTING TRAINING")
+        print(f"{'='*60}")
+        
+        training_start = time.time()
+        
+        try:
+            for epoch in range(start_epoch, num_epochs):
+                epoch_start = time.time()
+                
+                print(f"\n📅 Epoch {epoch}/{num_epochs}")
+                print(f"   LR: {optimizer.param_groups[0]['lr']:.6f}")
+                
+                # Show memory status
+                self.memory_monitor.print_memory_status()
+                
+                # Training
+                train_loss, train_acc = self.train_epoch(
+                    model, train_loader, criterion, optimizer, epoch
                 )
-                dataloaders.append(loader)
-                print(f"   ✅ {name}: {len(loader)} batches")
-            else:
-                # Create empty loader for consistency
-                dataloaders.append(None)
-                print(f"   ❌ {name}: No data")
+                
+                # Validation
+                val_loss, val_acc = self.validate(model, val_loader, criterion)
+                
+                # Update scheduler
+                scheduler.step()
+                
+                # Update history
+                self.history['train_loss'].append(train_loss)
+                self.history['train_acc'].append(train_acc)
+                self.history['val_loss'].append(val_loss)
+                self.history['val_acc'].append(val_acc)
+                
+                # Check if best model
+                is_best = val_acc > best_val_acc
+                if is_best:
+                    best_val_acc = val_acc
+                
+                # Save checkpoint
+                metrics = {
+                    'train_loss': train_loss,
+                    'train_acc': train_acc,
+                    'val_loss': val_loss,
+                    'val_acc': val_acc,
+                    'best_val_acc': best_val_acc,
+                    'history': self.history
+                }
+                
+                self.checkpoint_manager.save_checkpoint(
+                    epoch, model, optimizer, scheduler, metrics, is_best
+                )
+                
+                # Print epoch summary
+                epoch_time = time.time() - epoch_start
+                total_time = time.time() - training_start
+                avg_epoch_time = total_time / (epoch - start_epoch + 1)
+                eta = avg_epoch_time * (num_epochs - epoch - 1)
+                
+                print(f"\n📊 Epoch {epoch} Summary:")
+                print(f"   Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+                print(f"   Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
+                print(f"   Best Val Acc: {best_val_acc:.2f}%")
+                print(f"   Epoch Time: {str(timedelta(seconds=int(epoch_time)))}")
+                print(f"   Total Time: {str(timedelta(seconds=int(total_time)))}")
+                print(f"   ETA: {str(timedelta(seconds=int(eta)))}")
+                
+                # Early stopping check
+                if len(self.history['val_loss']) > 10:
+                    recent_losses = self.history['val_loss'][-10:]
+                    if all(recent_losses[i] >= recent_losses[i-1] for i in range(1, 10)):
+                        print(f"\n⚠️ Early stopping: Validation loss not improving")
+                        break
+                
+                # Plot training curves periodically
+                if epoch % 5 == 0:
+                    self.plot_training_curves()
+                
+                # Memory cleanup
+                gc.collect()
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                
+        except KeyboardInterrupt:
+            print(f"\n⛔ Training interrupted at epoch {epoch}")
+            print(f"💾 Saving checkpoint...")
+            
+            metrics = {
+                'train_loss': train_loss if 'train_loss' in locals() else None,
+                'train_acc': train_acc if 'train_acc' in locals() else None,
+                'val_loss': val_loss if 'val_loss' in locals() else None,
+                'val_acc': val_acc if 'val_acc' in locals() else None,
+                'best_val_acc': best_val_acc,
+                'history': self.history
+            }
+            
+            self.checkpoint_manager.save_checkpoint(
+                epoch, model, optimizer, scheduler, metrics, False
+            )
+            print(f"✅ Checkpoint saved. Training can be resumed.")
+            return
         
-        return dataloaders[0], dataloaders[1], dataloaders[2]
+        except Exception as e:
+            print(f"\n❌ Training error: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Save emergency checkpoint
+            print(f"💾 Saving emergency checkpoint...")
+            emergency_checkpoint = self.output_dir / f'emergency_checkpoint_epoch_{epoch}.pt'
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'error': str(e)
+            }, emergency_checkpoint)
+            print(f"✅ Emergency checkpoint saved: {emergency_checkpoint}")
+            return
+        
+        # Final evaluation
+        print(f"\n{'='*60}")
+        print(f"TRAINING COMPLETED")
+        print(f"{'='*60}")
+        
+        total_training_time = time.time() - training_start
+        print(f"⏱️ Total training time: {str(timedelta(seconds=int(total_training_time)))}")
+        print(f"🏆 Best validation accuracy: {best_val_acc:.2f}%")
+        
+        # Test evaluation
+        if test_loader and len(test_loader) > 0:
+            print(f"\n🧪 Evaluating on test set...")
+            
+            # Load best model
+            best_checkpoint = torch.load(self.checkpoint_manager.best_model_file)
+            model.load_state_dict(best_checkpoint['model_state_dict'])
+            
+            test_loss, test_acc = self.validate(model, test_loader, criterion)
+            
+            print(f"\n📊 Test Results:")
+            print(f"   Test Loss: {test_loss:.4f}")
+            print(f"   Test Accuracy: {test_acc:.2f}%")
+            
+            # Save final results
+            results = {
+                'train_history': self.history,
+                'best_val_acc': best_val_acc,
+                'test_acc': test_acc,
+                'test_loss': test_loss,
+                'training_time': total_training_time,
+                'num_epochs': num_epochs,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            results_file = self.output_dir / 'training_results.json'
+            with open(results_file, 'w') as f:
+                json.dump(results, f, indent=2)
+            
+            print(f"\n✅ Results saved to {results_file}")
+        
+        # Plot final training curves
+        self.plot_training_curves(save=True)
+        
+        print(f"\n✅ Training pipeline completed successfully!")
+    
+    def plot_training_curves(self, save=False):
+        """Plot training and validation curves"""
+        if len(self.history['train_loss']) < 2:
+            return
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        
+        # Loss plot
+        axes[0].plot(self.history['train_loss'], label='Train Loss', linewidth=2)
+        axes[0].plot(self.history['val_loss'], label='Val Loss', linewidth=2)
+        axes[0].set_xlabel('Epoch')
+        axes[0].set_ylabel('Loss')
+        axes[0].set_title('Training and Validation Loss')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+        
+        # Accuracy plot
+        axes[1].plot(self.history['train_acc'], label='Train Acc', linewidth=2)
+        axes[1].plot(self.history['val_acc'], label='Val Acc', linewidth=2)
+        axes[1].set_xlabel('Epoch')
+        axes[1].set_ylabel('Accuracy (%)')
+        axes[1].set_title('Training and Validation Accuracy')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if save:
+            plot_file = self.output_dir / 'training_curves.png'
+            plt.savefig(plot_file, dpi=300, bbox_inches='tight')
+            print(f"📈 Training curves saved to {plot_file}")
+        
+        plt.close()
 
 
 def main():
-    """Main function with enhanced error handling and progress tracking"""
+    """Main function with comprehensive error handling"""
     print("=" * 80)
-    print("VIDEO CLASSIFICATION - MAXIMUM ACCURACY MODE")
-    print("Enhanced with Comprehensive Progress Tracking")
+    print("MEMORY-EFFICIENT VIDEO CLASSIFICATION")
+    print("Optimized for 16GB RAM / RTX 4060 8GB")
     print("=" * 80)
     
-    # Setup paths
+    # Configuration
     data_dir = Path("video_classification_project/data/processed")
     output_dir = Path("video_classification_project/models")
+    max_memory_gb = 5.0  # Maximum memory per data file
     
-    # Verify data directory exists
+    # Check for data directory
     if not data_dir.exists():
-        print(f"\n❌ ERROR: Data directory not found!")
-        print(f"   Expected: {data_dir}")
-        print(f"   Current working directory: {Path.cwd()}")
+        print(f"\n❌ Data directory not found: {data_dir}")
         
-        # Look for alternative locations
-        alternative_paths = [
+        # Search for alternatives
+        alternatives = [
             Path("data/processed"),
             Path("../data/processed"),
-            Path("./processed"),
+            Path("./processed")
         ]
         
-        print(f"\n🔍 Searching for alternative data locations...")
-        for alt_path in alternative_paths:
-            if alt_path.exists():
-                print(f"   ✅ Found: {alt_path}")
-                data_dir = alt_path
+        for alt in alternatives:
+            if alt.exists():
+                print(f"✅ Found alternative: {alt}")
+                data_dir = alt
                 break
-            else:
-                print(f"   ❌ Not found: {alt_path}")
         else:
-            print(f"\n💡 SOLUTION:")
-            print(f"   1. Make sure your data is preprocessed")
-            print(f"   2. Check the directory structure:")
-            print(f"      data/processed/")
-            print(f"      ├── train/")
-            print(f"      ├── val/")
-            print(f"      └── test/")
+            print(f"\n💡 Please ensure your data is preprocessed and located at:")
+            print(f"   {data_dir}")
             return
     
+    # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # System information
+    print(f"\n💻 System Information:")
+    mem = psutil.virtual_memory()
+    print(f"   Total RAM: {mem.total/1e9:.1f}GB")
+    print(f"   Available RAM: {mem.available/1e9:.1f}GB")
+    print(f"   CPU Cores: {psutil.cpu_count()}")
+    
+    if torch.cuda.is_available():
+        print(f"   GPU: {torch.cuda.get_device_name()}")
+        print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB")
     
     # Initialize trainer
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    trainer = VideoClassificationTrainer(data_dir, output_dir, device)
+    trainer = VideoClassificationTrainer(
+        data_dir=data_dir,
+        output_dir=output_dir,
+        device=device,
+        max_memory_gb=max_memory_gb
+    )
     
     try:
-        # Test data loading first
-        print(f"\n🧪 TESTING DATA LOADING...")
-        train_loader, val_loader, test_loader = trainer.create_data_loaders()
+        # Start training
+        print(f"\n🚀 Starting training pipeline...")
+        print(f"   Data directory: {data_dir}")
+        print(f"   Output directory: {output_dir}")
+        print(f"   Memory limit per file: {max_memory_gb}GB")
+        print(f"   Device: {device}")
         
-        if train_loader is None or len(train_loader) == 0:
-            print(f"❌ No training data available. Cannot proceed.")
-            return
+        # Check for existing checkpoint
+        checkpoint_file = output_dir / 'checkpoints' / 'training_checkpoint.pt'
+        if checkpoint_file.exists():
+            print(f"\n📂 Found existing checkpoint: {checkpoint_file}")
+            response = input("Resume from checkpoint? (y/n): ").lower()
+            resume = response == 'y'
+        else:
+            resume = False
         
-        print(f"\n✅ Data loading successful!")
-        print(f"   Ready to start training...")
-        
-        # You would continue with model setup and training here
-        # trainer.setup_ensemble_models()
-        # trainer.train()
+        # Train model
+        trainer.train(num_epochs=50, resume=resume)
         
     except KeyboardInterrupt:
         print(f"\n⛔ Process interrupted by user")
+        print(f"💡 Training can be resumed from the last checkpoint")
+    
     except Exception as e:
         print(f"\n❌ Error: {str(e)}")
         import traceback
         traceback.print_exc()
+        
+        print(f"\n💡 Tips for troubleshooting:")
+        print(f"   1. Check if data files are properly formatted")
+        print(f"   2. Ensure sufficient disk space for checkpoints")
+        print(f"   3. Try reducing batch size if OOM errors occur")
+        print(f"   4. Check the error log above for specific issues")
 
 
 if __name__ == "__main__":
-    # Set optimal torch settings
+    # Set environment variables for optimal performance
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+    
+    # Set torch settings
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
     
-    # Enable tensor core usage
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
     
+    # Run main
     main()
