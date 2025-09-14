@@ -67,6 +67,8 @@ Dataset/
 models/*
 !models/.gitkeep
 resume.checkpoint.json
+*.pt
+*.ckpt
 
 # Results & outputs
 results/*
