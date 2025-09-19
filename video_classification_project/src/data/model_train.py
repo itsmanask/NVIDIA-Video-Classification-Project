@@ -8,6 +8,8 @@ from pathlib import Path
 import json
 import time
 import os
+import sys
+import platform
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -51,7 +53,7 @@ class MemoryEfficientVideoDataset(Dataset):
         # Memory-mapped files cache
         self.mmap_cache = {}
         
-        # Checkpoint file for resuming
+        # Checkpoint file for resuming - ensure proper path handling
         self.checkpoint_file = self.data_dir / f"{split}_dataset_index.pkl"
         
         # Try to load existing index
@@ -817,7 +819,7 @@ class VideoClassificationTrainer:
                 print(f"{i}. {ckpt.name}")
         
         # Also check for latest checkpoint
-        latest = self.checkpoint_dir / 'latest_checkpoint.pt'
+        latest = self.checkpoint_manager.checkpoint_dir / 'latest_checkpoint.pt'
         if latest.exists():
             print(f"{len(checkpoints)+1}. latest_checkpoint.pt (Most recent)")
         
@@ -1077,6 +1079,10 @@ class VideoClassificationTrainer:
         if len(self.history['train_loss']) < 2:
             return
         
+        # Use non-interactive backend if saving
+        if save:
+            plt.switch_backend('Agg')
+        
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
         
         # Loss plot
@@ -1107,58 +1113,113 @@ class VideoClassificationTrainer:
         plt.close()
 
 
+def get_system_info():
+    """Get system information for both Windows and Linux"""
+    system_info = {
+        'os': platform.system(),
+        'os_version': platform.version(),
+        'python_version': sys.version,
+        'cpu_count': os.cpu_count(),
+        'platform': platform.platform()
+    }
+    
+    # Memory information
+    mem = psutil.virtual_memory()
+    system_info['total_ram_gb'] = mem.total / 1e9
+    system_info['available_ram_gb'] = mem.available / 1e9
+    
+    # GPU information
+    if torch.cuda.is_available():
+        system_info['gpu_name'] = torch.cuda.get_device_name()
+        system_info['gpu_memory_gb'] = torch.cuda.get_device_properties(0).total_memory / 1e9
+        system_info['cuda_version'] = torch.version.cuda
+        system_info['cudnn_version'] = torch.backends.cudnn.version()
+    else:
+        system_info['gpu_name'] = 'No CUDA GPU available'
+    
+    return system_info
+
+
+def find_data_directory():
+    """Find data directory across different platforms"""
+    possible_paths = [
+        Path("video_classification_project") / "data" / "processed",
+        Path("data") / "processed",
+        Path("..") / "data" / "processed",
+        Path("processed"),
+        Path.home() / "video_classification_project" / "data" / "processed",
+        Path("C:") / "video_classification_project" / "data" / "processed" if platform.system() == "Windows" else Path("/tmp") / "video_classification_project" / "data" / "processed"
+    ]
+    
+    for path in possible_paths:
+        if path.exists() and path.is_dir():
+            return path
+    
+    return None
+
+
 def main():
-    """Main function with comprehensive error handling"""
+    """Main function with comprehensive error handling and cross-platform support"""
     print("=" * 80)
     print("ENHANCED VIDEO CLASSIFICATION WITH MEMORY OPTIMIZATION")
+    print("Cross-Platform Support: Windows & Linux")
     print("Optimized for RTX 4060 8GB / 16GB RAM")
     print("Features: Mixed Precision (FP16), Gradient Accumulation, Memory-Mapped Loading")
     print("=" * 80)
     
-    # Configuration
-    data_dir = Path("video_classification_project/data/processed")
-    output_dir = Path("video_classification_project/models")
-    max_memory_gb = 3.0  # Reduced for safety with 12.7GB files
-    gradient_accumulation_steps = 4  # Effective batch size = 2 * 4 = 8
+    # Get system information
+    system_info = get_system_info()
     
-    # Check for data directory
-    if not data_dir.exists():
-        print(f"\n❌ Data directory not found: {data_dir}")
-        
-        # Search for alternatives
-        alternatives = [
-            Path("data/processed"),
-            Path("../data/processed"),
-            Path("./processed")
+    print(f"\n💻 System Information:")
+    print(f"   OS: {system_info['os']} ({system_info['platform']})")
+    print(f"   Python: {system_info['python_version'].split()[0]}")
+    print(f"   Total RAM: {system_info['total_ram_gb']:.1f}GB")
+    print(f"   Available RAM: {system_info['available_ram_gb']:.1f}GB")
+    print(f"   CPU Cores: {system_info['cpu_count']}")
+    print(f"   GPU: {system_info['gpu_name']}")
+    if 'gpu_memory_gb' in system_info:
+        print(f"   GPU Memory: {system_info['gpu_memory_gb']:.1f}GB")
+        print(f"   CUDA: {system_info['cuda_version']}")
+    
+    # Configuration - adjusted for cross-platform
+    data_dir = find_data_directory()
+    if data_dir is None:
+        print(f"\n❌ Data directory not found!")
+        print(f"\n💡 Please ensure your data is preprocessed and located at one of:")
+        possible_paths = [
+            "video_classification_project/data/processed",
+            "data/processed", 
+            "../data/processed",
+            "processed"
         ]
-        
-        for alt in alternatives:
-            if alt.exists():
-                print(f"✅ Found alternative: {alt}")
-                data_dir = alt
-                break
-        else:
-            print(f"\n💡 Please ensure your data is preprocessed and located at:")
-            print(f"   {data_dir}")
-            return
+        for path in possible_paths:
+            print(f"   {path}")
+        return
     
-    # Create output directory
+    print(f"\n✅ Found data directory: {data_dir}")
+    
+    # Create output directory with OS-appropriate path
+    if platform.system() == "Windows":
+        output_dir = Path("video_classification_project") / "models"
+    else:
+        output_dir = Path("video_classification_project") / "models"
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # System information
-    print(f"\n💻 System Information:")
-    mem = psutil.virtual_memory()
-    print(f"   CPU: AMD Ryzen 7840HS")
-    print(f"   Total RAM: {mem.total/1e9:.1f}GB")
-    print(f"   Available RAM: {mem.available/1e9:.1f}GB (Windows using ~4-5GB)")
-    print(f"   CPU Cores: {psutil.cpu_count()}")
+    # Memory configuration based on system
+    if system_info['available_ram_gb'] > 12:
+        max_memory_gb = 4.0
+        gradient_accumulation_steps = 2
+    elif system_info['available_ram_gb'] > 8:
+        max_memory_gb = 3.0
+        gradient_accumulation_steps = 4
+    else:
+        max_memory_gb = 2.0
+        gradient_accumulation_steps = 8
     
-    if torch.cuda.is_available():
-        print(f"   GPU: {torch.cuda.get_device_name()}")
-        print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB")
-        
-        # Set memory fraction to prevent OOM
-        torch.cuda.set_per_process_memory_fraction(0.9)  # Use 90% of GPU memory max
+    print(f"\n⚙ Configuration:")
+    print(f"   Memory limit per file: {max_memory_gb}GB")
+    print(f"   Gradient accumulation: {gradient_accumulation_steps} steps")
     
     # Initialize trainer
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -1175,8 +1236,6 @@ def main():
         print(f"\n🚀 Starting optimized training pipeline...")
         print(f"   Data directory: {data_dir}")
         print(f"   Output directory: {output_dir}")
-        print(f"   Memory limit per file: {max_memory_gb}GB")
-        print(f"   Gradient accumulation: {gradient_accumulation_steps} steps")
         print(f"   Device: {device}")
         
         # Train model
@@ -1206,14 +1265,35 @@ def main():
         print(f"   2. Ensure sufficient disk space for checkpoints")
         print(f"   3. Monitor GPU memory usage during training")
         print(f"   4. Check the error log above for specific issues")
+        
+        # Save system info for debugging
+        debug_file = output_dir / 'debug_system_info.json'
+        try:
+            with open(debug_file, 'w') as f:
+                json.dump(system_info, f, indent=2, default=str)
+            print(f"   5. System info saved to {debug_file}")
+        except:
+            pass
 
 
 if __name__ == "__main__":
     # Set environment variables for optimal performance
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'  # Smaller splits for better memory management
-    os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Async CUDA operations
+    if platform.system() == "Windows":
+        # Windows-specific optimizations
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+        os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
+        # Disable Windows Defender real-time scanning on temp files if possible
+        os.environ['TMP'] = str(Path.cwd() / 'temp')
+        os.environ['TEMP'] = str(Path.cwd() / 'temp')
+        Path(os.environ['TMP']).mkdir(exist_ok=True)
+    else:
+        # Linux-specific optimizations
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+        os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
+        # Use faster memory allocator on Linux
+        os.environ['MALLOC_ARENA_MAX'] = '1'
     
-    # Set torch settings
+    # Set torch settings for both platforms
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
     
@@ -1224,6 +1304,14 @@ if __name__ == "__main__":
         # Clear any existing cache
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
+        
+        # Set memory management based on platform
+        if platform.system() == "Windows":
+            # More conservative on Windows due to memory fragmentation
+            torch.cuda.set_per_process_memory_fraction(0.85)
+        else:
+            # More aggressive on Linux
+            torch.cuda.set_per_process_memory_fraction(0.9)
     
     # Run main
     main()
