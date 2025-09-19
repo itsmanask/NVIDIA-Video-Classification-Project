@@ -16,23 +16,36 @@ def analyze_dataset(base_path):
     
     # Define all subcategories for each main category
     category_structure = {
-        'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto', 'The Walt Disney Company', 
-                     'Dragon Ball', 'Sonic the Hedgehog', 'One Piece', 'Walt Disney World', 
-                     'Bleach', 'Mickey Mouse'],
+        'Animation': [
+            'Animation', 'Bleach', 'Cartoon', 'Dragon Ball',
+            'Lego minifigure', 'Mickey Mouse', 'Naruto',
+            'One Piece', 'Sonic the Hedgehog',
+            'The Walt Disney Company', 'Walt Disney World'
+        ],
         
-        'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto V', 
-                  'World of Warcraft', 'Call of Duty: Black Ops II', 'League of Legends', 
-                  'Battlefield', 'Grand Theft Auto: San Andreas', 'RuneScape', 
-                  'Call of Duty: Modern Warfare 3', 'Call of Duty: Black Ops', 'FIFA 15', 
-                  'Counter-Strike', 'Need for Speed'],
+        'Gaming': [
+            'Action-adventure game', 'Battlefield', 'Call of Duty',
+            'Counter-Strike', 'FIFA 15', 'Games',
+            'Grand Theft Auto', 'Grand Theft Auto V',
+            'League of Legends', 'Minecraft', 'Need for Speed',
+            'RuneScape', 'Video game', 'World of Warcraft'
+        ],
         
-        'Natural Content': ['Animal', 'Pet', 'Fishing', 'Fish', 'Outdoor recreation', 'Dog', 
-                           'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature', 
-                           'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
+        'Natural Content': [
+            'Animal', 'Bear', 'Bird', 'Cat', 'Chicken',
+            'Deer', 'Dog', 'Elephant', 'Farm', 'Fish',
+            'Fishing', 'Garden', 'Horse', 'Lion',
+            'Nature', 'Outdoor recreation', 'Pet',
+            'Plant', 'Tree', 'Wildlife'
+        ],
         
-        'Flat Content': ['Website', 'Chart', 'Map', 'Logo', 'Text', 'Typography', 
-                        'Screencast', 'Illustration', 'Poster']
+        'Flat Content': [
+            'Chart', 'Illustration', 'Logo', 'Map',
+            'Poster', 'Screencast', 'Text',
+            'Typography', 'Website'
+        ]
     }
+
     
     # Use case-insensitive extension matching to avoid duplicates
     video_extensions = {'.mp4', '.avi', '.mov', '.mkv'}  # Use set for faster lookup
