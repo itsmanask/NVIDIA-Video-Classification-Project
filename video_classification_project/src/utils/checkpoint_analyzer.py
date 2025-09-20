@@ -297,8 +297,488 @@ class CheckpointAnalyzer:
         
         return pd.DataFrame()
     
+    def get_available_metrics(self, checkpoint: Optional[Dict] = None) -> List[str]:
+        """Get list of available metrics in the checkpoint history"""
+        if checkpoint is None:
+            checkpoint = self.checkpoint_data
+            
+        if not checkpoint or 'metrics' not in checkpoint:
+            return []
+            
+        metrics = checkpoint['metrics']
+        if 'history' not in metrics:
+            return []
+            
+        history = metrics['history']
+        return [k for k, v in history.items() if v and len(v) > 0]
+    
+    def plot_all_epochs_progression(self, checkpoint: Optional[Dict] = None, save_path: Optional[str] = None, 
+                                   figsize: tuple = (25, 18)):
+        """Plot all metrics showing progression from epoch 0 to current epoch"""
+        if checkpoint is None:
+            checkpoint = self.checkpoint_data
+        
+        if not checkpoint or 'metrics' not in checkpoint:
+            print("No metrics data available for plotting")
+            return
+        
+        metrics = checkpoint['metrics']
+        
+        if 'history' not in metrics or not metrics['history']:
+            print("No training history available for plotting")
+            return
+        
+        history = metrics['history']
+        available_metrics = self.get_available_metrics(checkpoint)
+        
+        if not available_metrics:
+            print("No training history data available")
+            return
+        
+        current_epoch = checkpoint.get('epoch', len(next(iter(history.values()))) - 1)
+        print(f"Plotting epoch progression from 0 to {current_epoch}...")
+        print(f"Available metrics: {', '.join(available_metrics)}")
+        
+        # Set style for better visualization
+        plt.style.use('default')
+        sns.set_palette("husl")
+        
+        # Create a comprehensive plot showing all epochs
+        fig = plt.figure(figsize=figsize)
+        
+        # Calculate subplot layout based on number of unique metric types
+        loss_metrics = [m for m in available_metrics if 'loss' in m.lower()]
+        acc_metrics = [m for m in available_metrics if 'acc' in m.lower()]
+        
+        # Create subplots
+        if loss_metrics and acc_metrics:
+            # Both loss and accuracy available
+            gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+            ax1 = fig.add_subplot(gs[0, :])  # Loss plot spans top row
+            ax2 = fig.add_subplot(gs[1, :])  # Accuracy plot spans bottom row
+        else:
+            # Only one type available
+            gs = fig.add_gridspec(1, 1)
+            ax1 = fig.add_subplot(gs[0, 0])
+            ax2 = None
+        
+        fig.suptitle(f'Training Progress: All Epochs (0 to {current_epoch})', 
+                    fontsize=16, fontweight='bold', y=0.95)
+        
+        colors = plt.cm.tab10(np.linspace(0, 1, 10))
+        
+        # Plot Loss metrics
+        if loss_metrics:
+            ax1.set_title('Loss Progression Across All Epochs', fontsize=14, fontweight='bold', pad=20)
+            
+            for i, metric in enumerate(loss_metrics):
+                if metric in history and history[metric]:
+                    epochs = list(range(len(history[metric])))
+                    values = history[metric]
+                    
+                    # Different styles for train vs val
+                    if 'train' in metric.lower():
+                        linestyle = '-'
+                        alpha = 0.8
+                        linewidth = 2.5
+                    elif 'val' in metric.lower():
+                        linestyle = '--'
+                        alpha = 0.9
+                        linewidth = 3
+                    else:
+                        linestyle = '-.'
+                        alpha = 0.7
+                        linewidth = 2
+                    
+                    color = colors[i % len(colors)]
+                    
+                    ax1.plot(epochs, values, color=color, linestyle=linestyle, 
+                            linewidth=linewidth, alpha=alpha, 
+                            label=metric.replace('_', ' ').title(),
+                            marker='o' if len(values) < 30 else None, markersize=4)
+                    
+                    # Add best value annotation
+                    best_idx = np.argmin(values)
+                    best_val = values[best_idx]
+                    ax1.annotate(f'Best: {best_val:.4f}\n(Epoch {best_idx})', 
+                               xy=(best_idx, best_val), xytext=(10, -20),
+                               textcoords='offset points', fontsize=10,
+                               bbox=dict(boxstyle='round,pad=0.4', facecolor=color, alpha=0.3),
+                               arrowprops=dict(arrowstyle='->', color=color, alpha=0.7))
+            
+            ax1.set_xlabel('Epoch', fontsize=12)
+            ax1.set_ylabel('Loss', fontsize=12)
+            ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax1.grid(True, alpha=0.3)
+            ax1.set_facecolor('#f8f9fa')
+            
+            # Add current epoch marker
+            ax1.axvline(x=current_epoch, color='red', linestyle=':', alpha=0.7, linewidth=2, label='Current Epoch')
+        
+        # Plot Accuracy metrics
+        if acc_metrics and ax2 is not None:
+            ax2.set_title('Accuracy Progression Across All Epochs', fontsize=14, fontweight='bold', pad=20)
+            
+            for i, metric in enumerate(acc_metrics):
+                if metric in history and history[metric]:
+                    epochs = list(range(len(history[metric])))
+                    values = history[metric]
+                    
+                    # Different styles for train vs val
+                    if 'train' in metric.lower():
+                        linestyle = '-'
+                        alpha = 0.8
+                        linewidth = 2.5
+                    elif 'val' in metric.lower():
+                        linestyle = '--'
+                        alpha = 0.9
+                        linewidth = 3
+                    else:
+                        linestyle = '-.'
+                        alpha = 0.7
+                        linewidth = 2
+                    
+                    color = colors[i % len(colors)]
+                    
+                    ax2.plot(epochs, values, color=color, linestyle=linestyle,
+                            linewidth=linewidth, alpha=alpha,
+                            label=metric.replace('_', ' ').title(),
+                            marker='o' if len(values) < 30 else None, markersize=4)
+                    
+                    # Add best value annotation
+                    best_idx = np.argmax(values)
+                    best_val = values[best_idx]
+                    ax2.annotate(f'Best: {best_val:.2f}%\n(Epoch {best_idx})', 
+                               xy=(best_idx, best_val), xytext=(10, 15),
+                               textcoords='offset points', fontsize=10,
+                               bbox=dict(boxstyle='round,pad=0.4', facecolor=color, alpha=0.3),
+                               arrowprops=dict(arrowstyle='->', color=color, alpha=0.7))
+            
+            ax2.set_xlabel('Epoch', fontsize=12)
+            ax2.set_ylabel('Accuracy (%)', fontsize=12)
+            ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax2.grid(True, alpha=0.3)
+            ax2.set_facecolor('#f8f9fa')
+            
+            # Add current epoch marker
+            ax2.axvline(x=current_epoch, color='red', linestyle=':', alpha=0.7, linewidth=2, label='Current Epoch')
+        
+        elif acc_metrics and ax2 is None:
+            # Only accuracy metrics available, use ax1
+            ax1.set_title(f'Training Metrics Progression: Epochs 0-{current_epoch}', fontsize=14, fontweight='bold', pad=20)
+            
+            for i, metric in enumerate(acc_metrics):
+                if metric in history and history[metric]:
+                    epochs = list(range(len(history[metric])))
+                    values = history[metric]
+                    
+                    # Different styles for train vs val
+                    if 'train' in metric.lower():
+                        linestyle = '-'
+                        alpha = 0.8
+                        linewidth = 2.5
+                    elif 'val' in metric.lower():
+                        linestyle = '--'
+                        alpha = 0.9
+                        linewidth = 3
+                    else:
+                        linestyle = '-.'
+                        alpha = 0.7
+                        linewidth = 2
+                    
+                    color = colors[i % len(colors)]
+                    
+                    ax1.plot(epochs, values, color=color, linestyle=linestyle,
+                            linewidth=linewidth, alpha=alpha,
+                            label=metric.replace('_', ' ').title(),
+                            marker='o' if len(values) < 30 else None, markersize=4)
+                    
+                    # Add best value annotation
+                    if 'acc' in metric.lower():
+                        best_idx = np.argmax(values)
+                        best_val = values[best_idx]
+                        ax1.annotate(f'Best: {best_val:.2f}%\n(Epoch {best_idx})', 
+                                   xy=(best_idx, best_val), xytext=(10, 15),
+                                   textcoords='offset points', fontsize=10,
+                                   bbox=dict(boxstyle='round,pad=0.4', facecolor=color, alpha=0.3),
+                                   arrowprops=dict(arrowstyle='->', color=color, alpha=0.7))
+            
+            ax1.set_xlabel('Epoch', fontsize=12)
+            ax1.set_ylabel('Accuracy (%)', fontsize=12)
+            ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax1.grid(True, alpha=0.3)
+            ax1.set_facecolor('#f8f9fa')
+            
+            # Add current epoch marker
+            ax1.axvline(x=current_epoch, color='red', linestyle=':', alpha=0.7, linewidth=2, label='Current Epoch')
+        
+        # Add summary text box
+        summary_text = f"Training Summary:\n"
+        summary_text += f"• Current Epoch: {current_epoch}\n"
+        summary_text += f"• Total Metrics: {len(available_metrics)}\n"
+        
+        if loss_metrics and history.get('val_loss'):
+            best_loss_epoch = np.argmin(history['val_loss'])
+            best_loss = history['val_loss'][best_loss_epoch]
+            summary_text += f"• Best Val Loss: {best_loss:.4f} (Epoch {best_loss_epoch})\n"
+        
+        if acc_metrics and history.get('val_acc'):
+            best_acc_epoch = np.argmax(history['val_acc'])
+            best_acc = history['val_acc'][best_acc_epoch]
+            summary_text += f"• Best Val Acc: {best_acc:.2f}% (Epoch {best_acc_epoch})\n"
+        
+        fig.text(0.02, 0.02, summary_text, fontsize=10, 
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.3),
+                verticalalignment='bottom')
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+            print(f"All epochs progression plot saved to {save_path}")
+        else:
+            plt.show()
+        
+        plt.close()
+        
+        # Print summary statistics
+    def plot_all_metrics(self, checkpoint: Optional[Dict] = None, save_path: Optional[str] = None, 
+                        figsize: tuple = (25, 18)):
+        """Plot all available metrics in a comprehensive dashboard"""
+        # Call the new epoch progression plot instead
+        self.plot_all_epochs_progression(checkpoint, save_path, figsize)
+        """Plot all available metrics in a comprehensive dashboard"""
+        if checkpoint is None:
+            checkpoint = self.checkpoint_data
+        
+        if not checkpoint or 'metrics' not in checkpoint:
+            print("No metrics data available for plotting")
+            return
+        
+        metrics = checkpoint['metrics']
+        
+        if 'history' not in metrics or not metrics['history']:
+            print("No training history available for plotting")
+            return
+        
+        history = metrics['history']
+        available_metrics = self.get_available_metrics(checkpoint)
+        
+        if not available_metrics:
+            print("No training history data available")
+            return
+        
+        print(f"Plotting comprehensive metrics dashboard...")
+        print(f"Available metrics: {', '.join(available_metrics)}")
+        
+        # Set style
+        plt.style.use('default')
+        sns.set_palette("husl")
+        
+        # Categorize metrics
+        accuracy_metrics = [m for m in available_metrics if 'acc' in m.lower() or 'accuracy' in m.lower()]
+        loss_metrics = [m for m in available_metrics if 'loss' in m.lower()]
+        f1_metrics = [m for m in available_metrics if 'f1' in m.lower()]
+        precision_metrics = [m for m in available_metrics if 'precision' in m.lower()]
+        recall_metrics = [m for m in available_metrics if 'recall' in m.lower()]
+        lr_metrics = [m for m in available_metrics if 'lr' in m.lower() or 'learning_rate' in m.lower()]
+        other_metrics = [m for m in available_metrics if m not in 
+                        accuracy_metrics + loss_metrics + f1_metrics + 
+                        precision_metrics + recall_metrics + lr_metrics]
+        
+        # Calculate subplot layout
+        metric_groups = []
+        if accuracy_metrics: metric_groups.append(('Accuracy', accuracy_metrics))
+        if loss_metrics: metric_groups.append(('Loss', loss_metrics))
+        if f1_metrics: metric_groups.append(('F1 Score', f1_metrics))
+        if precision_metrics: metric_groups.append(('Precision', precision_metrics))
+        if recall_metrics: metric_groups.append(('Recall', recall_metrics))
+        if lr_metrics: metric_groups.append(('Learning Rate', lr_metrics))
+        if other_metrics: metric_groups.append(('Other Metrics', other_metrics))
+        
+        n_groups = len(metric_groups)
+        if n_groups == 0:
+            print("No metrics to plot")
+            return
+        
+        # Create subplots
+        cols = min(3, n_groups)
+        rows = (n_groups + cols - 1) // cols
+        
+        fig, axes = plt.subplots(rows, cols, figsize=figsize)
+        if rows == 1 and cols == 1:
+            axes = [axes]
+        elif rows == 1 or cols == 1:
+            axes = axes.flatten()
+        else:
+            axes = axes.flatten()
+        
+        fig.suptitle(f'Training Metrics Dashboard - Epoch {checkpoint.get("epoch", "Unknown")}', 
+                    fontsize=20, fontweight='bold')
+        
+        colors = plt.cm.Set1(np.linspace(0, 1, 10))
+        
+        for idx, (group_name, group_metrics) in enumerate(metric_groups):
+            if idx >= len(axes):
+                break
+                
+            ax = axes[idx]
+            
+            for i, metric_name in enumerate(group_metrics):
+                if metric_name not in history or not history[metric_name]:
+                    continue
+                    
+                values = history[metric_name]
+                epochs = range(len(values))
+                
+                # Choose color and style
+                color = colors[i % len(colors)]
+                linestyle = '-' if 'train' in metric_name else '--' if 'val' in metric_name else '-.'
+                linewidth = 2.5 if 'val' in metric_name else 2
+                alpha = 0.9 if 'val' in metric_name else 0.7
+                
+                ax.plot(epochs, values, color=color, linestyle=linestyle, 
+                       linewidth=linewidth, alpha=alpha, label=metric_name.replace('_', ' ').title(),
+                       marker='o' if len(values) < 50 else None, markersize=4)
+            
+            ax.set_xlabel('Epoch', fontsize=12)
+            ax.set_ylabel(group_name, fontsize=12)
+            ax.set_title(f'{group_name} Over Training', fontsize=14, fontweight='bold')
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.grid(True, alpha=0.3)
+            ax.set_facecolor('#f8f9fa')
+            
+            # Add best value annotation for the last metric in group
+            if group_metrics:
+                last_metric = group_metrics[-1]
+                if last_metric in history and history[last_metric]:
+                    values = history[last_metric]
+                    if 'loss' in last_metric.lower():
+                        best_idx = np.argmin(values)
+                        best_val = values[best_idx]
+                        ax.annotate(f'Best: {best_val:.4f}', 
+                                  xy=(best_idx, best_val), xytext=(10, 10),
+                                  textcoords='offset points', 
+                                  bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7),
+                                  arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+                    else:
+                        best_idx = np.argmax(values)
+                        best_val = values[best_idx]
+                        ax.annotate(f'Best: {best_val:.4f}', 
+                                  xy=(best_idx, best_val), xytext=(10, -15),
+                                  textcoords='offset points',
+                                  bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7),
+                                  arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+        
+        # Hide empty subplots
+        for idx in range(n_groups, len(axes)):
+            axes[idx].set_visible(False)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+            print(f"Comprehensive metrics plot saved to {save_path}")
+        else:
+            plt.show()
+        
+        plt.close()
+        
+        # Create additional detailed plots
+        self._plot_metric_trends(checkpoint, save_path)
+    
+    def _plot_metric_trends(self, checkpoint: Dict, base_save_path: Optional[str] = None):
+        """Plot detailed trend analysis for metrics"""
+        history = checkpoint['metrics']['history']
+        available_metrics = self.get_available_metrics(checkpoint)
+        
+        if len(available_metrics) < 2:
+            return
+        
+        print("Creating detailed trend analysis plots...")
+        
+        # 1. Learning curve comparison
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+        fig.suptitle('Detailed Training Analysis', fontsize=16, fontweight='bold')
+        
+        # Loss comparison
+        loss_metrics = [m for m in available_metrics if 'loss' in m.lower()]
+        if loss_metrics:
+            for metric in loss_metrics:
+                epochs = range(len(history[metric]))
+                ax1.plot(epochs, history[metric], label=metric.replace('_', ' ').title(), 
+                        linewidth=2, alpha=0.8)
+            ax1.set_xlabel('Epoch')
+            ax1.set_ylabel('Loss')
+            ax1.set_title('Loss Curves')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+        
+        # Accuracy comparison
+        acc_metrics = [m for m in available_metrics if 'acc' in m.lower()]
+        if acc_metrics:
+            for metric in acc_metrics:
+                epochs = range(len(history[metric]))
+                ax2.plot(epochs, history[metric], label=metric.replace('_', ' ').title(), 
+                        linewidth=2, alpha=0.8)
+            ax2.set_xlabel('Epoch')
+            ax2.set_ylabel('Accuracy')
+            ax2.set_title('Accuracy Curves')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+        
+        # Training vs Validation gap
+        train_acc = None
+        val_acc = None
+        for metric in acc_metrics:
+            if 'train' in metric:
+                train_acc = history[metric]
+            elif 'val' in metric:
+                val_acc = history[metric]
+        
+        if train_acc and val_acc:
+            min_len = min(len(train_acc), len(val_acc))
+            gap = [train_acc[i] - val_acc[i] for i in range(min_len)]
+            epochs = range(min_len)
+            ax3.plot(epochs, gap, 'r-', linewidth=2, alpha=0.7)
+            ax3.set_xlabel('Epoch')
+            ax3.set_ylabel('Training - Validation Gap')
+            ax3.set_title('Overfitting Analysis (Acc Gap)')
+            ax3.grid(True, alpha=0.3)
+            ax3.axhline(y=0, color='k', linestyle='--', alpha=0.5)
+        
+        # Smoothed metrics (if enough data)
+        if len(available_metrics) > 0:
+            metric = available_metrics[0]
+            if len(history[metric]) > 10:
+                # Simple moving average
+                window = min(5, len(history[metric]) // 4)
+                smoothed = pd.Series(history[metric]).rolling(window=window, center=True).mean()
+                epochs = range(len(history[metric]))
+                ax4.plot(epochs, history[metric], alpha=0.3, label='Raw')
+                ax4.plot(epochs, smoothed, linewidth=2, label=f'Smoothed (window={window})')
+                ax4.set_xlabel('Epoch')
+                ax4.set_ylabel(metric.replace('_', ' ').title())
+                ax4.set_title('Smoothed Trend')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if base_save_path:
+            if isinstance(base_save_path, str):
+                trend_path = base_save_path.replace('.png', '_trends.png')
+            else:
+                trend_path = str(base_save_path).replace('.png', '_trends.png')
+            plt.savefig(trend_path, dpi=300, bbox_inches='tight', facecolor='white')
+            print(f"Trend analysis plot saved to {trend_path}")
+        else:
+            plt.show()
+        
+        plt.close()
+    
     def plot_training_curves(self, checkpoint: Optional[Dict] = None, save_path: Optional[str] = None):
-        """Plot training curves from checkpoint history"""
+        """Plot training curves from checkpoint history (backward compatibility)"""
         if checkpoint is None:
             checkpoint = self.checkpoint_data
         
@@ -405,8 +885,8 @@ class CheckpointAnalyzer:
                 if not values:
                     continue
                 
-                if 'acc' in metric_name:
-                    # Higher is better for accuracy
+                if 'acc' in metric_name or 'f1' in metric_name or 'precision' in metric_name or 'recall' in metric_name:
+                    # Higher is better for accuracy, f1, precision, recall
                     best_idx = np.argmax(values)
                     best_value = values[best_idx]
                     best_metrics[f'best_{metric_name}'] = {
@@ -476,14 +956,20 @@ class CheckpointAnalyzer:
                 epoch = info['epoch']
                 current = info.get('current')
                 
-                if 'acc' in metric_name:
-                    report.append(f"   {metric_name}: {value:.2f}% (epoch {epoch})")
+                if 'acc' in metric_name or 'f1' in metric_name or 'precision' in metric_name or 'recall' in metric_name:
+                    report.append(f"   {metric_name}: {value:.4f} (epoch {epoch})")
                     if current is not None:
-                        report.append(f"      Current: {current:.2f}%")
+                        report.append(f"      Current: {current:.4f}")
                 else:
                     report.append(f"   {metric_name}: {value:.4f} (epoch {epoch})")
                     if current is not None:
                         report.append(f"      Current: {current:.4f}")
+        
+        # Available metrics summary
+        available_metrics = self.get_available_metrics(checkpoint)
+        if available_metrics:
+            report.append(f"\nAVAILABLE METRICS:")
+            report.append(f"   {', '.join(available_metrics)}")
         
         report.append("\n" + "=" * 80)
         
@@ -504,9 +990,12 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze PyTorch checkpoint files')
     parser.add_argument('checkpoint', nargs='*', help='Path(s) to checkpoint file(s)')
     parser.add_argument('--compare', action='store_true', help='Compare multiple checkpoints')
-    parser.add_argument('--plot', action='store_true', help='Plot training curves')
+    parser.add_argument('--plot', action='store_true', help='Plot basic training curves')
+    parser.add_argument('--plot-all', action='store_true', help='Plot comprehensive metrics dashboard')
+    parser.add_argument('--metrics', action='store_true', help='Show available metrics without plotting')
     parser.add_argument('--report', type=str, help='Save detailed report to file')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory for plots and reports')
+    parser.add_argument('--figsize', type=str, default='20,15', help='Figure size for plots (width,height)')
     
     args = parser.parse_args()
     
@@ -546,7 +1035,7 @@ def main():
         for i, file in enumerate(checkpoint_files):
             print(f"   {i+1}. {file}")
         
-        # Let user select
+        # Let user select files
         try:
             selection = input(f"\nEnter file number(s) to analyze (1-{len(checkpoint_files)}, or 'all'): ")
             if selection.lower() == 'all':
@@ -559,10 +1048,41 @@ def main():
             selected_files = [checkpoint_files[0]]
         
         args.checkpoint = [str(f) for f in selected_files]
+        
+        # Interactive options menu
+        if len(selected_files) == 1:
+            print(f"\nSelected: {selected_files[0].name}")
+            print("\nAnalysis Options:")
+            print("   1. Basic analysis only (text report)")
+            print("   2. Basic analysis + simple training curves")
+            print("   3. All epochs progression plot (RECOMMENDED)")
+            
+            try:
+                choice = input("\nSelect option (1-3, default=1): ").strip()
+                if not choice:
+                    choice = "1"
+                
+                if choice == "2":
+                    args.plot = True
+                elif choice == "3":
+                    args.plot_all = True
+                
+                # Always use extra large figure size
+                args.figsize = "25,18"
+                        
+            except (ValueError, KeyboardInterrupt):
+                print("\nUsing default analysis (text report only)")
+        
+        elif len(selected_files) > 1:
+            print(f"\nSelected {len(selected_files)} files for comparison")
+            args.compare = True
     
     analyzer = CheckpointAnalyzer()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Parse figsize - default to extra large
+    figsize = tuple(map(int, args.figsize.split(','))) if hasattr(args, 'figsize') and args.figsize else (25, 18)
     
     if args.compare and len(args.checkpoint) > 1:
         # Compare multiple checkpoints
@@ -589,6 +1109,15 @@ def main():
                 
             analysis = analyzer.analyze_checkpoint(checkpoint)
             
+            # Show available metrics if requested
+            if args.metrics:
+                available_metrics = analyzer.get_available_metrics(checkpoint)
+                print(f"\nAvailable metrics in checkpoint:")
+                for metric in available_metrics:
+                    print(f"   - {metric}")
+                print(f"\nTotal: {len(available_metrics)} metrics")
+                return
+            
             # Generate report
             if args.report:
                 report_path = output_dir / args.report
@@ -597,8 +1126,13 @@ def main():
                 report = analyzer.generate_report(checkpoint)
                 print(f"\n{report}")
             
-            # Plot training curves
-            if args.plot:
+            # Plot comprehensive metrics dashboard
+            if args.plot_all:
+                plot_path = output_dir / f"{Path(checkpoint_path).stem}_all_metrics.png"
+                analyzer.plot_all_metrics(checkpoint, plot_path, figsize=figsize)
+            
+            # Plot basic training curves (backward compatibility)
+            elif args.plot:
                 plot_path = output_dir / f"{Path(checkpoint_path).stem}_training_curves.png"
                 analyzer.plot_training_curves(checkpoint, plot_path)
             
