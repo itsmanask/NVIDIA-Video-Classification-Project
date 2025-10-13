@@ -1,0 +1,13 @@
+{
+  "os": "Windows",
+  "os_version": "10.0.26100",
+  "python_version": "3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]",
+  "cpu_count": 16,
+  "platform": "Windows-10-10.0.26100-SP0",
+  "total_ram_gb": 16.415322112,
+  "available_ram_gb": 5.565513728,
+  "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "gpu_memory_gb": 8.585216,
+  "cuda_version": "11.8",
+  "cudnn_version": 90100
+}

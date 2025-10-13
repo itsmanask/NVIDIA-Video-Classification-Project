@@ -24,6 +24,71 @@ import mmap
 warnings.filterwarnings('ignore')
 
 
+class LabelSmoothingCrossEntropy(nn.Module):
+    """Label smoothing loss for better generalization"""
+    
+    def __init__(self, num_classes, smoothing=0.1):
+        super().__init__()
+        self.smoothing = smoothing
+        self.num_classes = num_classes
+        self.confidence = 1.0 - smoothing
+        print(f"   Initialized Label Smoothing with alpha={smoothing}")
+    
+    def forward(self, predictions, targets):
+        log_probs = nn.functional.log_softmax(predictions, dim=-1)
+        
+        # True label loss
+        nll_loss = -log_probs.gather(dim=-1, index=targets.unsqueeze(1))
+        nll_loss = nll_loss.squeeze(1)
+        
+        # Smooth loss (entropy)
+        smooth_loss = -log_probs.mean(dim=-1)
+        
+        # Combine losses
+        loss = self.confidence * nll_loss + self.smoothing * smooth_loss
+        
+        return loss.mean()
+
+
+class EarlyStopping:
+    """Enhanced early stopping with patience and delta"""
+    
+    def __init__(self, patience=10, min_delta=1e-4, mode='max', verbose=True):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.best_epoch = 0
+        print(f"   Initialized Early Stopping: patience={patience}, min_delta={min_delta}, mode={mode}")
+        
+    def __call__(self, score, epoch):
+        if self.mode == 'max':
+            score_improved = self.best_score is None or score > (self.best_score + self.min_delta)
+        else:
+            score_improved = self.best_score is None or score < (self.best_score - self.min_delta)
+        
+        if score_improved:
+            self.best_score = score
+            self.counter = 0
+            self.best_epoch = epoch
+            if self.verbose:
+                print(f"   ✓ Validation improved to {score:.4f} (best epoch: {epoch})")
+        else:
+            self.counter += 1
+            if self.verbose:
+                print(f"   ⚠ No improvement for {self.counter}/{self.patience} epochs (best: {self.best_score:.4f} at epoch {self.best_epoch})")
+            
+            if self.counter >= self.patience:
+                self.early_stop = True
+                if self.verbose:
+                    print(f"   🛑 Early stopping triggered! Best model was at epoch {self.best_epoch}")
+        
+        return self.early_stop
+
+
 class MemoryEfficientVideoDataset(Dataset):
     """Memory-efficient dataset with memory-mapped loading and caching"""
     
@@ -58,14 +123,14 @@ class MemoryEfficientVideoDataset(Dataset):
         
         # Try to load existing index
         if self.checkpoint_file.exists():
-            print(f"📂 Found existing index: {self.checkpoint_file}")
+            print(f"Found existing index: {self.checkpoint_file}")
             try:
                 self._load_checkpoint()
-                print(f"✅ Loaded index with {self.total_samples:,} samples")
+                print(f"Loaded index with {self.total_samples:,} samples")
                 return
             except Exception as e:
-                print(f"⚠ Failed to load checkpoint: {e}")
-                print("🔄 Rebuilding index...")
+                print(f"Failed to load checkpoint: {e}")
+                print("Rebuilding index...")
         
         # Build index
         self._build_index()
@@ -75,12 +140,12 @@ class MemoryEfficientVideoDataset(Dataset):
     
     def _build_index(self):
         """Build an index of all data files without loading them"""
-        print(f"\n🔍 Building dataset index...")
+        print(f"\nBuilding dataset index...")
         print(f"Memory limit: {self.max_memory_gb:.1f}GB")
         
         split_dir = self.data_dir / self.split
         if not split_dir.exists():
-            print(f"❌ Split directory not found: {split_dir}")
+            print(f"Split directory not found: {split_dir}")
             return
         
         # Scan for data files
@@ -111,18 +176,18 @@ class MemoryEfficientVideoDataset(Dataset):
                 pbar.update(1)
         
         if not data_files:
-            print(f"❌ No data files found!")
+            print(f"No data files found!")
             return
         
         total_size_gb = sum(size for _, size in data_files)
-        print(f"\n📊 Found {len(data_files)} data files")
-        print(f"💾 Total size: {total_size_gb:.2f}GB")
+        print(f"\nFound {len(data_files)} data files")
+        print(f"Total size: {total_size_gb:.2f}GB")
         
         # Sort files by size for efficient loading
         data_files.sort(key=lambda x: x[1])
         
         # Build index with progress and ETA
-        print("\n📝 Building file index with memory mapping...")
+        print("\nBuilding file index with memory mapping...")
         start_time = time.time()
         
         with tqdm(total=len(data_files), desc="Indexing files") as pbar:
@@ -184,13 +249,13 @@ class MemoryEfficientVideoDataset(Dataset):
                     pbar.update(1)
                     
                 except Exception as e:
-                    print(f"\n⚠ Failed to index {data_file.name}: {e}")
+                    print(f"\nFailed to index {data_file.name}: {e}")
                     pbar.update(1)
                     continue
         
         elapsed_time = time.time() - start_time
-        print(f"\n✅ Indexing completed in {timedelta(seconds=int(elapsed_time))}")
-        print(f"📊 Total samples indexed: {self.total_samples:,}")
+        print(f"\nIndexing completed in {timedelta(seconds=int(elapsed_time))}")
+        print(f"Total samples indexed: {self.total_samples:,}")
     
     def _setup_memory_mapped_file(self, file_path):
         """Setup memory-mapped access for large files"""
@@ -214,9 +279,9 @@ class MemoryEfficientVideoDataset(Dataset):
             with open(self.checkpoint_file, 'wb') as f:
                 pickle.dump(checkpoint_data, f)
             
-            print(f"💾 Saved index checkpoint: {self.checkpoint_file}")
+            print(f"Saved index checkpoint: {self.checkpoint_file}")
         except Exception as e:
-            print(f"⚠ Failed to save checkpoint: {e}")
+            print(f"Failed to save checkpoint: {e}")
     
     def _load_checkpoint(self):
         """Load index from disk"""
@@ -228,7 +293,7 @@ class MemoryEfficientVideoDataset(Dataset):
         self.total_samples = checkpoint_data['total_samples']
         self.category_mapping = checkpoint_data['category_mapping']
         
-        print(f"📅 Index created: {checkpoint_data['timestamp']}")
+        print(f"Index created: {checkpoint_data['timestamp']}")
     
     def _load_file_data(self, file_info):
         """Load data with memory-mapped access for large files"""
@@ -238,7 +303,7 @@ class MemoryEfficientVideoDataset(Dataset):
         available_memory = self.memory_monitor.get_available_memory_gb()
         
         if file_info['size_gb'] > available_memory * 0.5:  # Use only 50% of available
-            print(f"\n⚠ Large file: {file_info['size_gb']:.2f}GB (Available: {available_memory:.2f}GB)")
+            print(f"\nLarge file: {file_info['size_gb']:.2f}GB (Available: {available_memory:.2f}GB)")
             
             # Clear cache aggressively
             self._clear_cache()
@@ -350,7 +415,7 @@ class MemoryMonitor:
         """Print current memory status"""
         info = self.get_memory_info()
         
-        print(f"\n💾 Memory Status:")
+        print(f"\nMemory Status:")
         print(f"   RAM: {info['ram']['used']:.1f}/{info['ram']['total']:.1f}GB ({info['ram']['percent']:.1f}%)")
         print(f"   Available: {info['ram']['available']:.1f}GB")
         print(f"   Process: {info['process']:.1f}GB")
@@ -383,7 +448,7 @@ class CheckpointManager:
         }
         
         torch.save(checkpoint, epoch_checkpoint_file)
-        print(f"💾 Saved checkpoint: {epoch_checkpoint_file.name}")
+        print(f"Saved checkpoint: {epoch_checkpoint_file.name}")
         
         # Also save as latest checkpoint
         latest_checkpoint = self.checkpoint_dir / 'latest_checkpoint.pt'
@@ -391,12 +456,14 @@ class CheckpointManager:
         
         if is_best:
             torch.save(checkpoint, self.best_model_file)
-            print(f"🏆 Saved best model (epoch {epoch})")
+            print(f"Saved best model (epoch {epoch})")
     
     def get_available_checkpoints(self):
         """Get list of available checkpoints"""
         checkpoints = sorted(self.checkpoint_dir.glob('checkpoint_epoch_*.pt'))
-        return checkpoints
+        # Also include emergency checkpoints
+        emergency_checkpoints = sorted(self.checkpoint_dir.glob('emergency_checkpoint_epoch_*.pt'))
+        return checkpoints + emergency_checkpoints
     
     def load_checkpoint(self, checkpoint_path, model, optimizer=None, scheduler=None, scaler=None):
         """Load specific checkpoint"""
@@ -416,7 +483,7 @@ class CheckpointManager:
         if scaler and checkpoint.get('scaler_state_dict'):
             scaler.load_state_dict(checkpoint['scaler_state_dict'])
         
-        print(f"📂 Loaded checkpoint from epoch {checkpoint['epoch']}")
+        print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
         
         return checkpoint
 
@@ -424,7 +491,7 @@ class CheckpointManager:
 class EnhancedCNNLSTM(nn.Module):
     """Enhanced CNN-LSTM with gradient checkpointing for memory efficiency"""
     
-    def __init__(self, num_classes=4, hidden_dim=512, num_layers=3, dropout=0.3, 
+    def __init__(self, num_classes=4, hidden_dim=512, num_layers=3, dropout=0.25,
                  backbone='resnet50', bidirectional=True, attention=True):
         super(EnhancedCNNLSTM, self).__init__()
         
@@ -444,7 +511,7 @@ class EnhancedCNNLSTM(nn.Module):
         else:
             raise ValueError(f"Unknown backbone: {backbone}")
         
-        # Feature projection
+        # Feature projection with reduced dropout
         self.feature_projection = nn.Sequential(
             nn.Linear(self.feature_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -474,7 +541,7 @@ class EnhancedCNNLSTM(nn.Module):
             )
             self.attention_norm = nn.LayerNorm(lstm_output_dim)
         
-        # Classifier
+        # Classifier with reduced dropout
         self.classifier = nn.Sequential(
             nn.Linear(lstm_output_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -522,16 +589,17 @@ class EnhancedCNNLSTM(nn.Module):
 
 
 class VideoClassificationTrainer:
-    """Enhanced trainer with gradient accumulation and mixed precision"""
+    """Enhanced trainer with FIXED implementations of all features"""
     
     def __init__(self, data_dir, output_dir, device='cuda', max_memory_gb=3.0, 
-                 gradient_accumulation_steps=4):
+                 gradient_accumulation_steps=4, gradient_clip_val=1.0):
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         self.max_memory_gb = max_memory_gb
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.gradient_clip_val = gradient_clip_val
         
         # Memory monitor
         self.memory_monitor = MemoryMonitor()
@@ -547,7 +615,8 @@ class VideoClassificationTrainer:
             'train_loss': [],
             'train_acc': [],
             'val_loss': [],
-            'val_acc': []
+            'val_acc': [],
+            'learning_rates': []
         }
     
     def _setup_device_optimizations(self):
@@ -556,7 +625,7 @@ class VideoClassificationTrainer:
             gpu_name = torch.cuda.get_device_name()
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
             
-            print(f"\n🚀 GPU Configuration")
+            print(f"\nGPU Configuration")
             print(f"   Device: {gpu_name}")
             print(f"   Memory: {gpu_memory:.1f}GB")
             print(f"   CUDA: {torch.version.cuda}")
@@ -570,11 +639,12 @@ class VideoClassificationTrainer:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
             
-            print(f"   ✅ Mixed Precision (FP16) enabled")
-            print(f"   ✅ Gradient accumulation: {self.gradient_accumulation_steps} steps")
-            print(f"   ✅ TF32 enabled")
+            print(f"   Mixed Precision (FP16) enabled")
+            print(f"   Gradient accumulation: {self.gradient_accumulation_steps} steps")
+            print(f"   Gradient clipping: {self.gradient_clip_val}")
+            print(f"   TF32 enabled")
         else:
-            print(f"\n⚠ Using CPU - training will be slow")
+            print(f"\nUsing CPU - training will be slow")
             self.scaler = None
             self.autocast = lambda: torch.enable_grad()
     
@@ -592,7 +662,7 @@ class VideoClassificationTrainer:
             self.data_dir, 
             split='train',
             max_memory_gb=self.max_memory_gb,
-            cache_size=30  # Reduced cache size
+            cache_size=30
         )
         
         val_dataset = MemoryEfficientVideoDataset(
@@ -611,14 +681,13 @@ class VideoClassificationTrainer:
         
         # Conservative batch sizes for RTX 4060 with gradient accumulation
         if self.device.type == 'cuda':
-            # Smaller batch size since we're using gradient accumulation
             batch_size = 2  # Very conservative for 8GB GPU with large files
         else:
             batch_size = 1
         
         # Effective batch size with gradient accumulation
         effective_batch_size = batch_size * self.gradient_accumulation_steps
-        print(f"\n⚙ Batch Configuration:")
+        print(f"\nBatch Configuration:")
         print(f"   Actual batch size: {batch_size}")
         print(f"   Gradient accumulation steps: {self.gradient_accumulation_steps}")
         print(f"   Effective batch size: {effective_batch_size}")
@@ -630,7 +699,7 @@ class VideoClassificationTrainer:
         else:
             num_workers = 0  # No parallel loading for memory efficiency
         
-        print(f"\n⚙ DataLoader Configuration:")
+        print(f"\nDataLoader Configuration:")
         print(f"   Workers: {num_workers}")
         print(f"   Pin memory: {self.device.type == 'cuda'}")
         print(f"   Available RAM: {available_ram:.1f}GB")
@@ -643,7 +712,7 @@ class VideoClassificationTrainer:
             num_workers=num_workers,
             pin_memory=(self.device.type == 'cuda'),
             persistent_workers=(num_workers > 0),
-            prefetch_factor=1 if num_workers > 0 else None  # Reduced prefetch
+            prefetch_factor=1 if num_workers > 0 else None
         )
         
         val_loader = DataLoader(
@@ -661,7 +730,7 @@ class VideoClassificationTrainer:
             num_workers=0  # No workers for test to save memory
         )
         
-        print(f"\n📊 Dataset Summary:")
+        print(f"\nDataset Summary:")
         print(f"   Train: {len(train_dataset):,} samples ({len(train_loader)} batches)")
         print(f"   Val: {len(val_dataset):,} samples ({len(val_loader)} batches)")
         print(f"   Test: {len(test_dataset):,} samples ({len(test_loader)} batches)")
@@ -669,7 +738,7 @@ class VideoClassificationTrainer:
         return train_loader, val_loader, test_loader
     
     def train_epoch(self, model, loader, criterion, optimizer, epoch):
-        """Train with gradient accumulation and mixed precision"""
+        """Train with gradient accumulation, clipping, and mixed precision"""
         model.train()
         
         running_loss = 0.0
@@ -706,6 +775,11 @@ class VideoClassificationTrainer:
                 
                 # Update weights after accumulation
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    # Gradient clipping
+                    if self.scaler:
+                        self.scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip_val)
+                    
                     if self.scaler:
                         self.scaler.step(optimizer)
                         self.scaler.update()
@@ -750,6 +824,11 @@ class VideoClassificationTrainer:
         
         # Handle any remaining gradients
         if (len(loader) % self.gradient_accumulation_steps) != 0:
+            # Gradient clipping for remaining gradients
+            if self.scaler:
+                self.scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip_val)
+            
             if self.scaler:
                 self.scaler.step(optimizer)
                 self.scaler.update()
@@ -803,7 +882,7 @@ class VideoClassificationTrainer:
         if not checkpoints:
             return None, 0
         
-        print("\n📂 Available Checkpoints:")
+        print("\nAvailable Checkpoints:")
         print("0. Start from scratch")
         
         for i, ckpt in enumerate(checkpoints, 1):
@@ -829,31 +908,31 @@ class VideoClassificationTrainer:
                 choice_num = int(choice)
                 
                 if choice_num == 0:
-                    print("✅ Starting training from scratch")
+                    print("Starting training from scratch")
                     return None, 0
                 elif 1 <= choice_num <= len(checkpoints):
                     selected = checkpoints[choice_num - 1]
-                    print(f"✅ Selected: {selected.name}")
+                    print(f"Selected: {selected.name}")
                     return selected, None
                 elif choice_num == len(checkpoints) + 1 and latest.exists():
-                    print(f"✅ Selected: latest_checkpoint.pt")
+                    print(f"Selected: latest_checkpoint.pt")
                     return latest, None
                 else:
-                    print("❌ Invalid choice, please try again")
+                    print("Invalid choice, please try again")
             except ValueError:
-                print("❌ Please enter a valid number")
+                print("Please enter a valid number")
     
-    def train(self, num_epochs=50):
-        """Main training loop with checkpoint selection"""
+    def train(self, num_epochs=50, label_smoothing=0.1, early_stopping_patience=10):
+        """FIXED MAIN TRAINING LOOP - All features properly implemented"""
         print(f"\n{'='*60}")
-        print(f"TRAINING CONFIGURATION")
+        print(f"ENHANCED TRAINING CONFIGURATION - FIXED IMPLEMENTATION")
         print(f"{'='*60}")
         
         # Create data loaders
         train_loader, val_loader, test_loader = self.create_data_loaders()
         
         if len(train_loader) == 0:
-            print("❌ No training data available!")
+            print("No training data available!")
             return
         
         # Initialize model
@@ -863,16 +942,49 @@ class VideoClassificationTrainer:
             num_classes=num_classes,
             hidden_dim=512,
             num_layers=3,
-            dropout=0.3,
+            dropout=0.25,
             backbone='resnet50',
             bidirectional=True,
             attention=True
         ).to(self.device)
         
-        # Loss and optimizer
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+        # FIXED: Properly use label smoothing loss
+        print(f"\nLoss Function Configuration:")
+        if label_smoothing > 0:
+            criterion = LabelSmoothingCrossEntropy(num_classes, smoothing=label_smoothing)
+            print(f"   ✓ Using Label Smoothing CrossEntropy (alpha={label_smoothing})")
+        else:
+            criterion = nn.CrossEntropyLoss()
+            print(f"   Using standard CrossEntropyLoss")
+        
+        # Optimizer with improved settings
+        optimizer = optim.AdamW(
+            model.parameters(), 
+            lr=1e-4, 
+            weight_decay=1e-5,
+            betas=(0.9, 0.999),
+            eps=1e-8
+        )
+        
+        # FIXED: Properly implemented scheduler
+        print(f"\nScheduler Configuration:")
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='max',  # Monitor validation accuracy
+            factor=0.5,  # Reduce LR by half
+            patience=5,  # Wait 5 epochs before reducing
+            min_lr=1e-7
+        )
+        print(f"   ✓ ReduceLROnPlateau: mode=max, factor=0.5, patience=5")
+        
+        # FIXED: Properly implemented early stopping
+        print(f"\nEarly Stopping Configuration:")
+        early_stopping = EarlyStopping(
+            patience=early_stopping_patience, 
+            min_delta=1e-4, 
+            mode='max',
+            verbose=True
+        )
         
         # Select checkpoint
         checkpoint_path, start_epoch = self.select_checkpoint()
@@ -884,9 +996,22 @@ class VideoClassificationTrainer:
             )
             if checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
-                best_val_acc = checkpoint['metrics'].get('best_val_acc', 0)
-                self.history = checkpoint['metrics'].get('history', self.history)
-                print(f"📂 Resuming from epoch {start_epoch}")
+                
+                if 'metrics' in checkpoint:
+                    best_val_acc = checkpoint['metrics'].get('best_val_acc', 0)
+                    loaded_history = checkpoint['metrics'].get('history', self.history)
+                    
+                    # Ensure all required keys exist in history
+                    for key in self.history.keys():
+                        if key not in loaded_history:
+                            loaded_history[key] = []
+                    
+                    self.history = loaded_history
+                else:
+                    print("   Emergency checkpoint detected - initializing with defaults")
+                    best_val_acc = 0
+                
+                print(f"Resuming from epoch {start_epoch}")
                 print(f"   Best validation accuracy: {best_val_acc:.2f}%")
         else:
             start_epoch = 0
@@ -895,21 +1020,25 @@ class VideoClassificationTrainer:
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         
-        print(f"\n🤖 Model Configuration:")
+        print(f"\nModel Configuration:")
         print(f"   Total parameters: {total_params:,}")
         print(f"   Trainable parameters: {trainable_params:,}")
         print(f"   Model size: {total_params * 4 / 1e9:.2f}GB")
         
-        print(f"\n🎯 Training Settings:")
+        print(f"\nFixed Training Settings:")
         print(f"   Epochs: {start_epoch} -> {num_epochs}")
-        print(f"   Learning rate: {optimizer.param_groups[0]['lr']:.6f}")
+        print(f"   Initial Learning rate: {optimizer.param_groups[0]['lr']:.6f}")
+        print(f"   ✓ Label smoothing: {label_smoothing}")
+        print(f"   ✓ Early stopping patience: {early_stopping_patience}")
+        print(f"   ✓ Scheduler: ReduceLROnPlateau")
         print(f"   Device: {self.device}")
         print(f"   Mixed Precision: {'Enabled' if self.scaler else 'Disabled'}")
         print(f"   Gradient Accumulation Steps: {self.gradient_accumulation_steps}")
+        print(f"   Gradient Clipping: {self.gradient_clip_val}")
         
         # Training loop
         print(f"\n{'='*60}")
-        print(f"STARTING TRAINING")
+        print(f"STARTING FIXED TRAINING LOOP")
         print(f"{'='*60}")
         
         training_start = time.time()
@@ -918,8 +1047,8 @@ class VideoClassificationTrainer:
             for epoch in range(start_epoch, num_epochs):
                 epoch_start = time.time()
                 
-                print(f"\n📅 Epoch {epoch}/{num_epochs}")
-                print(f"   LR: {optimizer.param_groups[0]['lr']:.6f}")
+                print(f"\nEpoch {epoch}/{num_epochs-1}")
+                print(f"   Current LR: {optimizer.param_groups[0]['lr']:.6f}")
                 
                 # Show memory status
                 self.memory_monitor.print_memory_status()
@@ -928,27 +1057,35 @@ class VideoClassificationTrainer:
                 gc.collect()
                 torch.cuda.empty_cache() if torch.cuda.is_available() else None
                 
-                # Training
+                # Training phase
                 train_loss, train_acc = self.train_epoch(
                     model, train_loader, criterion, optimizer, epoch
                 )
                 
-                # Validation
+                # Validation phase
                 val_loss, val_acc = self.validate(model, val_loader, criterion)
                 
-                # Update scheduler
-                scheduler.step()
+                # FIXED: Properly step scheduler with validation accuracy
+                old_lr = optimizer.param_groups[0]['lr']
+                scheduler.step(val_acc)  # Pass validation accuracy for ReduceLROnPlateau
+                new_lr = optimizer.param_groups[0]['lr']
+                
+                if old_lr != new_lr:
+                    print(f"   🔄 Learning rate reduced: {old_lr:.6f} -> {new_lr:.6f}")
                 
                 # Update history
+                current_lr = optimizer.param_groups[0]['lr']
                 self.history['train_loss'].append(train_loss)
                 self.history['train_acc'].append(train_acc)
                 self.history['val_loss'].append(val_loss)
                 self.history['val_acc'].append(val_acc)
+                self.history['learning_rates'].append(current_lr)
                 
                 # Check if best model
                 is_best = val_acc > best_val_acc
                 if is_best:
                     best_val_acc = val_acc
+                    print(f"   🎯 New best validation accuracy: {best_val_acc:.2f}%")
                 
                 # Save checkpoint for EVERY epoch
                 metrics = {
@@ -957,7 +1094,8 @@ class VideoClassificationTrainer:
                     'val_loss': val_loss,
                     'val_acc': val_acc,
                     'best_val_acc': best_val_acc,
-                    'history': self.history
+                    'history': self.history,
+                    'current_lr': current_lr
                 }
                 
                 self.checkpoint_manager.save_checkpoint(
@@ -970,20 +1108,23 @@ class VideoClassificationTrainer:
                 avg_epoch_time = total_time / (epoch - start_epoch + 1)
                 eta = avg_epoch_time * (num_epochs - epoch - 1)
                 
-                print(f"\n📊 Epoch {epoch} Summary:")
+                print(f"\nEpoch {epoch} Summary:")
                 print(f"   Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
                 print(f"   Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
                 print(f"   Best Val Acc: {best_val_acc:.2f}%")
+                print(f"   Current LR: {current_lr:.6f}")
                 print(f"   Epoch Time: {str(timedelta(seconds=int(epoch_time)))}")
                 print(f"   Total Time: {str(timedelta(seconds=int(total_time)))}")
                 print(f"   ETA: {str(timedelta(seconds=int(eta)))}")
                 
-                # Early stopping check
-                if len(self.history['val_loss']) > 15:
-                    recent_losses = self.history['val_loss'][-15:]
-                    if all(recent_losses[i] >= recent_losses[i-1] for i in range(1, 15)):
-                        print(f"\n⚠ Early stopping: Validation loss not improving")
-                        break
+                # FIXED: Properly check early stopping
+                should_stop = early_stopping(val_acc, epoch)
+                
+                if should_stop:
+                    print(f"\n🛑 Early stopping triggered at epoch {epoch}!")
+                    print(f"   Best validation accuracy: {best_val_acc:.2f}% at epoch {early_stopping.best_epoch}")
+                    print(f"   Total training time: {str(timedelta(seconds=int(time.time() - training_start)))}")
+                    break
                 
                 # Plot training curves periodically
                 if epoch % 5 == 0:
@@ -995,8 +1136,8 @@ class VideoClassificationTrainer:
                 torch.cuda.empty_cache() if torch.cuda.is_available() else None
                 
         except KeyboardInterrupt:
-            print(f"\n⛔ Training interrupted at epoch {epoch}")
-            print(f"💾 Saving checkpoint...")
+            print(f"\nTraining interrupted at epoch {epoch}")
+            print(f"Saving checkpoint...")
             
             metrics = {
                 'train_loss': self.history['train_loss'][-1] if self.history['train_loss'] else None,
@@ -1010,37 +1151,56 @@ class VideoClassificationTrainer:
             self.checkpoint_manager.save_checkpoint(
                 epoch, model, optimizer, scheduler, self.scaler, metrics, False
             )
-            print(f"✅ Checkpoint saved. Training can be resumed.")
+            print(f"Checkpoint saved. Training can be resumed.")
             return
         
         except Exception as e:
-            print(f"\n❌ Training error: {e}")
+            print(f"\nTraining error: {e}")
             import traceback
             traceback.print_exc()
             
-            # Save emergency checkpoint
-            print(f"💾 Saving emergency checkpoint...")
-            emergency_checkpoint = self.output_dir / f'emergency_checkpoint_epoch_{epoch}.pt'
-            torch.save({
+            # Save comprehensive emergency checkpoint
+            print(f"Saving comprehensive emergency checkpoint...")
+            
+            emergency_metrics = {
+                'train_loss': self.history['train_loss'][-1] if self.history['train_loss'] else None,
+                'train_acc': self.history['train_acc'][-1] if self.history['train_acc'] else None,
+                'val_loss': self.history['val_loss'][-1] if self.history['val_loss'] else None,
+                'val_acc': self.history['val_acc'][-1] if self.history['val_acc'] else None,
+                'best_val_acc': best_val_acc,
+                'history': self.history,
+                'current_lr': optimizer.param_groups[0]['lr']
+            }
+            
+            emergency_checkpoint_data = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
-                'error': str(e)
-            }, emergency_checkpoint)
-            print(f"✅ Emergency checkpoint saved: {emergency_checkpoint}")
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                'scaler_state_dict': self.scaler.state_dict() if self.scaler else None,
+                'metrics': emergency_metrics,
+                'timestamp': datetime.now().isoformat(),
+                'error_info': str(e),
+                'emergency_save': True
+            }
+            
+            emergency_checkpoint = self.output_dir / 'checkpoints' / f'emergency_checkpoint_epoch_{epoch:03d}.pt'
+            torch.save(emergency_checkpoint_data, emergency_checkpoint)
+            print(f"Comprehensive emergency checkpoint saved: {emergency_checkpoint}")
             return
         
         # Final evaluation
         print(f"\n{'='*60}")
-        print(f"TRAINING COMPLETED")
+        print(f"TRAINING COMPLETED SUCCESSFULLY")
         print(f"{'='*60}")
         
         total_training_time = time.time() - training_start
-        print(f"⏱ Total training time: {str(timedelta(seconds=int(total_training_time)))}")
-        print(f"🏆 Best validation accuracy: {best_val_acc:.2f}%")
+        print(f"Total training time: {str(timedelta(seconds=int(total_training_time)))}")
+        print(f"Best validation accuracy: {best_val_acc:.2f}%")
         
         # Test evaluation
         if test_loader and len(test_loader) > 0:
-            print(f"\n🧪 Evaluating on test set...")
+            print(f"\nEvaluating on test set...")
             
             # Load best model
             best_checkpoint = torch.load(self.checkpoint_manager.best_model_file)
@@ -1048,7 +1208,7 @@ class VideoClassificationTrainer:
             
             test_loss, test_acc = self.validate(model, test_loader, criterion)
             
-            print(f"\n📊 Test Results:")
+            print(f"\nFinal Test Results:")
             print(f"   Test Loss: {test_loss:.4f}")
             print(f"   Test Accuracy: {test_acc:.2f}%")
             
@@ -1059,23 +1219,28 @@ class VideoClassificationTrainer:
                 'test_acc': test_acc,
                 'test_loss': test_loss,
                 'training_time': total_training_time,
-                'num_epochs': num_epochs,
+                'num_epochs_trained': epoch + 1,
+                'early_stopped': hasattr(early_stopping, 'early_stop') and early_stopping.early_stop,
+                'best_epoch': early_stopping.best_epoch,
+                'label_smoothing': label_smoothing,
+                'early_stopping_patience': early_stopping_patience,
                 'timestamp': datetime.now().isoformat()
             }
             
-            results_file = self.output_dir / 'training_results.json'
+            results_file = self.output_dir / 'fixed_training_results.json'
             with open(results_file, 'w') as f:
                 json.dump(results, f, indent=2)
             
-            print(f"\n✅ Results saved to {results_file}")
+            print(f"\nResults saved to {results_file}")
         
         # Plot final training curves
         self.plot_training_curves(save=True)
         
-        print(f"\n✅ Training pipeline completed successfully!")
+        print(f"\n🎉 Fixed training pipeline completed successfully!")
+        print(f"   All features working: Label Smoothing ✓, Early Stopping ✓, Adaptive LR ✓")
     
     def plot_training_curves(self, save=False):
-        """Plot training and validation curves"""
+        """Enhanced plotting with 4 subplots"""
         if len(self.history['train_loss']) < 2:
             return
         
@@ -1083,32 +1248,51 @@ class VideoClassificationTrainer:
         if save:
             plt.switch_backend('Agg')
         
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         
         # Loss plot
-        axes[0].plot(self.history['train_loss'], label='Train Loss', linewidth=2)
-        axes[0].plot(self.history['val_loss'], label='Val Loss', linewidth=2)
-        axes[0].set_xlabel('Epoch')
-        axes[0].set_ylabel('Loss')
-        axes[0].set_title('Training and Validation Loss')
-        axes[0].legend()
-        axes[0].grid(True, alpha=0.3)
+        axes[0, 0].plot(self.history['train_loss'], label='Train Loss', linewidth=2, color='blue')
+        axes[0, 0].plot(self.history['val_loss'], label='Val Loss', linewidth=2, color='orange')
+        axes[0, 0].set_xlabel('Epoch')
+        axes[0, 0].set_ylabel('Loss')
+        axes[0, 0].set_title('Training and Validation Loss')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
         
         # Accuracy plot
-        axes[1].plot(self.history['train_acc'], label='Train Acc', linewidth=2)
-        axes[1].plot(self.history['val_acc'], label='Val Acc', linewidth=2)
-        axes[1].set_xlabel('Epoch')
-        axes[1].set_ylabel('Accuracy (%)')
-        axes[1].set_title('Training and Validation Accuracy')
-        axes[1].legend()
-        axes[1].grid(True, alpha=0.3)
+        axes[0, 1].plot(self.history['train_acc'], label='Train Acc', linewidth=2, color='blue')
+        axes[0, 1].plot(self.history['val_acc'], label='Val Acc', linewidth=2, color='orange')
+        axes[0, 1].set_xlabel('Epoch')
+        axes[0, 1].set_ylabel('Accuracy (%)')
+        axes[0, 1].set_title('Training and Validation Accuracy')
+        axes[0, 1].legend()
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        # Learning rate plot
+        if self.history['learning_rates']:
+            axes[1, 0].plot(self.history['learning_rates'], linewidth=2, color='green')
+            axes[1, 0].set_xlabel('Epoch')
+            axes[1, 0].set_ylabel('Learning Rate')
+            axes[1, 0].set_title('Learning Rate Schedule (ReduceLROnPlateau)')
+            axes[1, 0].set_yscale('log')
+            axes[1, 0].grid(True, alpha=0.3)
+        
+        # Overfitting analysis
+        if len(self.history['train_acc']) > 1 and len(self.history['val_acc']) > 1:
+            train_val_gap = [t - v for t, v in zip(self.history['train_acc'], self.history['val_acc'])]
+            axes[1, 1].plot(train_val_gap, linewidth=2, color='red')
+            axes[1, 1].set_xlabel('Epoch')
+            axes[1, 1].set_ylabel('Train - Val Accuracy (%)')
+            axes[1, 1].set_title('Overfitting Analysis (Gap)')
+            axes[1, 1].axhline(y=0, color='black', linestyle='--', alpha=0.5)
+            axes[1, 1].grid(True, alpha=0.3)
         
         plt.tight_layout()
         
         if save:
-            plot_file = self.output_dir / 'training_curves.png'
+            plot_file = self.output_dir / 'fixed_training_curves.png'
             plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-            print(f"📈 Training curves saved to {plot_file}")
+            print(f"Training curves saved to {plot_file}")
         
         plt.close()
 
@@ -1161,16 +1345,16 @@ def find_data_directory():
 def main():
     """Main function with comprehensive error handling and cross-platform support"""
     print("=" * 80)
-    print("ENHANCED VIDEO CLASSIFICATION WITH MEMORY OPTIMIZATION")
-    print("Cross-Platform Support: Windows & Linux")
-    print("Optimized for RTX 4060 8GB / 16GB RAM")
-    print("Features: Mixed Precision (FP16), Gradient Accumulation, Memory-Mapped Loading")
+    print("FIXED VIDEO CLASSIFICATION TRAINER")
+    print("Features: Label Smoothing ✓, Early Stopping ✓, Adaptive LR ✓")
+    print("Memory Optimization: Mixed Precision, Gradient Accumulation, Memory Mapping")
+    print("Hardware: Optimized for RTX 4060 8GB / 16GB RAM")
     print("=" * 80)
     
     # Get system information
     system_info = get_system_info()
     
-    print(f"\n💻 System Information:")
+    print(f"\nSystem Information:")
     print(f"   OS: {system_info['os']} ({system_info['platform']})")
     print(f"   Python: {system_info['python_version'].split()[0]}")
     print(f"   Total RAM: {system_info['total_ram_gb']:.1f}GB")
@@ -1181,11 +1365,11 @@ def main():
         print(f"   GPU Memory: {system_info['gpu_memory_gb']:.1f}GB")
         print(f"   CUDA: {system_info['cuda_version']}")
     
-    # Configuration - adjusted for cross-platform
+    # Configuration
     data_dir = find_data_directory()
     if data_dir is None:
-        print(f"\n❌ Data directory not found!")
-        print(f"\n💡 Please ensure your data is preprocessed and located at one of:")
+        print(f"\nData directory not found!")
+        print(f"\nPlease ensure your data is preprocessed and located at one of:")
         possible_paths = [
             "video_classification_project/data/processed",
             "data/processed", 
@@ -1196,9 +1380,9 @@ def main():
             print(f"   {path}")
         return
     
-    print(f"\n✅ Found data directory: {data_dir}")
+    print(f"\nFound data directory: {data_dir}")
     
-    # Create output directory with OS-appropriate path
+    # Create output directory
     if platform.system() == "Windows":
         output_dir = Path("video_classification_project") / "models"
     else:
@@ -1217,38 +1401,42 @@ def main():
         max_memory_gb = 2.0
         gradient_accumulation_steps = 8
     
-    print(f"\n⚙ Configuration:")
+    print(f"\nConfiguration:")
     print(f"   Memory limit per file: {max_memory_gb}GB")
     print(f"   Gradient accumulation: {gradient_accumulation_steps} steps")
     
-    # Initialize trainer
+    # Initialize trainer with FIXED features
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     trainer = VideoClassificationTrainer(
         data_dir=data_dir,
         output_dir=output_dir,
         device=device,
         max_memory_gb=max_memory_gb,
-        gradient_accumulation_steps=gradient_accumulation_steps
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        gradient_clip_val=1.0
     )
     
     try:
-        # Start training
-        print(f"\n🚀 Starting optimized training pipeline...")
+        print(f"\nStarting FIXED training pipeline...")
         print(f"   Data directory: {data_dir}")
         print(f"   Output directory: {output_dir}")
         print(f"   Device: {device}")
         
-        # Train model
-        trainer.train(num_epochs=50)
+        # Train model with FIXED settings
+        trainer.train(
+            num_epochs=50,
+            label_smoothing=0.1,  # NOW PROPERLY USED
+            early_stopping_patience=10  # NOW PROPERLY IMPLEMENTED
+        )
         
     except KeyboardInterrupt:
-        print(f"\n⛔ Process interrupted by user")
-        print(f"💡 Training can be resumed from the last checkpoint")
+        print(f"\nProcess interrupted by user")
+        print(f"Training can be resumed from the last checkpoint")
     
     except torch.cuda.OutOfMemoryError as e:
-        print(f"\n❌ GPU Out of Memory Error!")
+        print(f"\nGPU Out of Memory Error!")
         print(f"   Error: {str(e)}")
-        print(f"\n💡 Solutions:")
+        print(f"\nSolutions:")
         print(f"   1. Reduce batch size (currently 2)")
         print(f"   2. Increase gradient accumulation steps")
         print(f"   3. Use smaller model (reduce hidden_dim)")
@@ -1256,11 +1444,11 @@ def main():
         torch.cuda.empty_cache()
     
     except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
+        print(f"\nError: {str(e)}")
         import traceback
         traceback.print_exc()
         
-        print(f"\n💡 Tips for troubleshooting:")
+        print(f"\nTips for troubleshooting:")
         print(f"   1. Check if data files are properly formatted")
         print(f"   2. Ensure sufficient disk space for checkpoints")
         print(f"   3. Monitor GPU memory usage during training")
@@ -1279,7 +1467,6 @@ def main():
 if __name__ == "__main__":
     # Set environment variables for optimal performance
     if platform.system() == "Windows":
-        # Windows-specific optimizations
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
         os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
         # Disable Windows Defender real-time scanning on temp files if possible
