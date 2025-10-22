@@ -47,6 +47,9 @@ video_classification_project/data/processed/test/*
 video_classification_project/data/processed/val/*
 !video_classification_project/data/processed/val/.gitkeep
 
+# Old processed files (ignore completely)
+Processed Files Old/
+
 # Dataset folder
 Dataset/
 
