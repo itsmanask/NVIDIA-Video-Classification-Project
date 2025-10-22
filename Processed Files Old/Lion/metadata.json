@@ -1,0 +1,18 @@
+{
+  "num_videos": 1,
+  "frames_per_video": 32,
+  "image_size": [
+    224,
+    224
+  ],
+  "category_mapping": {
+    "Natural_Content": 2
+  },
+  "augmented": true,
+  "selected_category": "Natural_Content",
+  "selected_subcategory": "Lion",
+  "sampling_strategy": "middle_clip",
+  "processing_mode": "gpu",
+  "device_used": "cuda",
+  "batch_size_used": 4
+}

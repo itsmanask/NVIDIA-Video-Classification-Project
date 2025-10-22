@@ -6,14 +6,15 @@ from torchvision import transforms
 from PIL import Image
 import json
 from tqdm import tqdm
+import random
 
 
 class VideoPreprocessor:
-    def __init__(self, input_dir, output_dir, frames_per_video=32, img_size=(224, 224), clip_duration=10):
+    def __init__(self, input_dir, output_dir, frames_per_video=64, img_size=(256, 256), clip_duration=10):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
-        self.frames_per_video = frames_per_video
-        self.img_size = img_size
+        self.frames_per_video = frames_per_video  # Increased from 32 to 64
+        self.img_size = img_size  # Increased from (224, 224) to (256, 256)
         self.clip_duration = clip_duration
         
         # Initialize processing mode
@@ -21,9 +22,10 @@ class VideoPreprocessor:
         self.device = None
         self.batch_size = 1  # Default for CPU
         
-        # Basic CPU transforms
+        # Enhanced CPU transforms with aspect ratio preservation
         self.transform = transforms.Compose([
-            transforms.Resize(img_size),
+            transforms.Resize(int(img_size[0] * 1.15)),  # Resize to slightly larger than target
+            transforms.CenterCrop(img_size),  # Preserve aspect ratio with center crop
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -91,9 +93,10 @@ class VideoPreprocessor:
 
     def _setup_gpu_components(self):
         """Setup GPU-specific components (only called when GPU mode is selected)"""
-        # GPU batch processing transforms (without normalization)
+        # GPU batch processing transforms (without normalization) - with aspect ratio preservation
         self.transform_gpu = transforms.Compose([
-            transforms.Resize(self.img_size),
+            transforms.Resize(int(self.img_size[0] * 1.15)),
+            transforms.CenterCrop(self.img_size),
             transforms.ToTensor(),
         ])
         
@@ -110,18 +113,35 @@ class VideoPreprocessor:
         """Perform normalization on GPU for better performance (GPU mode only)"""
         return (tensor_batch - self.normalize_mean) / self.normalize_std
 
-    def apply_augmentations_gpu(self, tensor_batch):
-        """Apply augmentations on GPU tensors (GPU mode only)"""
+    def apply_augmentations_gpu(self, tensor_batch, category=None):
+        """Apply augmentations on GPU tensors with category-specific enhancements"""
         batch_size, channels, height, width = tensor_batch.shape
         
         # Random horizontal flip
         if torch.rand(1).item() > 0.5:
             tensor_batch = torch.flip(tensor_batch, dims=[3])
         
-        # Random brightness/contrast adjustment
-        if torch.rand(1).item() > 0.5:
-            brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.6  # ±0.3
-            tensor_batch = torch.clamp(tensor_batch * brightness_factor, 0, 1)
+        # Category-specific augmentations for Gaming and Animation
+        if category in ['Gaming', 'Animation']:
+            # Motion blur simulation for Gaming/Animation
+            if torch.rand(1).item() > 0.6:
+                # Simple motion blur using average pooling and interpolation
+                blur_kernel = 3
+                blurred = torch.nn.functional.avg_pool2d(tensor_batch, kernel_size=blur_kernel, stride=1, padding=1)
+                alpha = 0.3 + torch.rand(1).item() * 0.4  # Blend factor
+                tensor_batch = alpha * blurred + (1 - alpha) * tensor_batch
+            
+            # Stronger color adjustments for Gaming/Animation
+            if torch.rand(1).item() > 0.5:
+                brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.8  # ±0.4
+                contrast_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.6   # ±0.3
+                tensor_batch = torch.clamp(tensor_batch * brightness_factor, 0, 1)
+                tensor_batch = torch.clamp((tensor_batch - 0.5) * contrast_factor + 0.5, 0, 1)
+        else:
+            # Moderate augmentations for Natural/Flat content
+            if torch.rand(1).item() > 0.5:
+                brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.4  # ±0.2
+                tensor_batch = torch.clamp(tensor_batch * brightness_factor, 0, 1)
         
         return tensor_batch
 
@@ -163,22 +183,83 @@ class VideoPreprocessor:
 
     def get_sampling_strategy_for_subcategory(self, category, subcategory):
         print(f"\nSelect sampling strategy for subcategory '{subcategory}' under '{category}':")
-        print("1. Uniform - Sample frames across entire video (2 minutes)")
-        print("2. Middle Clip - Focus on middle 10 seconds (most content-rich)")
-        print("3. Random Clip - Random 10-second clips (training diversity)")
+        print("1. Uniform - Sample frames across entire video")
+        print("2. Middle Clip - Focus on middle 10 seconds")
+        print("3. Random Clip - Random 10-second clips")
+        print("4. Multi-Clip - Sample from multiple segments (early, middle, late)")
+        print("5. Adaptive Multi-Clip - Smart multi-clip for Gaming/Animation, middle for others")
+        
         while True:
-            strategy_input = input(f"Sampling strategy (1-3) for {subcategory}: ").strip()
-            if strategy_input in ['1', '2', '3']:
-                if strategy_input == '1':
-                    return 'uniform'
-                elif strategy_input == '2':
-                    return 'middle_clip'
-                else:
-                    return 'random_clip'
+            strategy_input = input(f"Sampling strategy (1-5) for {subcategory}: ").strip()
+            if strategy_input in ['1', '2', '3', '4', '5']:
+                strategies = {
+                    '1': 'uniform',
+                    '2': 'middle_clip',
+                    '3': 'random_clip',
+                    '4': 'multi_clip',
+                    '5': 'adaptive_multi_clip'
+                }
+                return strategies[strategy_input]
             else:
-                print("Invalid input. Please enter 1, 2, or 3.")
+                print("Invalid input. Please enter 1, 2, 3, 4, or 5.")
 
-    def extract_frames(self, video_path, max_frames=32, sampling_strategy='uniform'):
+    def extract_frames_multi_clip(self, video_path, max_frames=64, num_clips=3):
+        """Extract frames from multiple segments of the video"""
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return []
+        
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        duration = total_frames / fps if fps > 0 else 0
+        
+        if total_frames == 0 or duration < 1.0:
+            cap.release()
+            return []
+        
+        frames = []
+        frames_per_clip = max_frames // num_clips
+        
+        # Define clip positions (early, middle, late)
+        clip_positions = [0.2, 0.5, 0.8]  # 20%, 50%, 80% of video duration
+        
+        for position in clip_positions[:num_clips]:
+            clip_center = int(total_frames * position)
+            clip_duration_frames = min(int(self.clip_duration * fps), total_frames // num_clips)
+            start_frame = max(0, clip_center - clip_duration_frames // 2)
+            end_frame = min(total_frames, start_frame + clip_duration_frames)
+            
+            # Sample frames from this clip
+            if end_frame - start_frame <= frames_per_clip:
+                frame_indices = list(range(start_frame, end_frame))
+            else:
+                step = (end_frame - start_frame) / frames_per_clip
+                frame_indices = [start_frame + int(i * step) for i in range(frames_per_clip)]
+            
+            for frame_idx in frame_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if ret:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frames.append(frame_rgb)
+        
+        cap.release()
+        return frames[:max_frames]  # Ensure we don't exceed max_frames
+
+    def extract_frames(self, video_path, max_frames=64, sampling_strategy='uniform', category=None):
+        """Enhanced frame extraction with multiple strategies including multi-clip"""
+        # Adaptive strategy: use multi-clip for Gaming/Animation
+        if sampling_strategy == 'adaptive_multi_clip':
+            if category in ['Gaming', 'Animation']:
+                return self.extract_frames_multi_clip(video_path, max_frames, num_clips=3)
+            else:
+                sampling_strategy = 'middle_clip'
+        
+        # Multi-clip strategy
+        if sampling_strategy == 'multi_clip':
+            return self.extract_frames_multi_clip(video_path, max_frames, num_clips=3)
+        
+        # Original strategies
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             return []
@@ -201,7 +282,7 @@ class VideoPreprocessor:
             max_start = max(0, total_frames - clip_frames)
             start_frame = np.random.randint(0, max_start + 1) if max_start > 0 else 0
             end_frame = start_frame + clip_frames
-        else:
+        else:  # uniform
             start_frame = 0
             end_frame = total_frames
         
@@ -224,25 +305,71 @@ class VideoPreprocessor:
         cap.release()
         return frames
 
-    def preprocess_video_cpu(self, video_path, augment=False, sampling_strategy='uniform'):
-        """CPU-based video preprocessing (original method)"""
-        frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy)
+    def get_category_specific_augmentation(self, category, augment):
+        """Create category-specific augmentation transforms"""
+        if not augment:
+            # No augmentation for validation/test sets
+            return transforms.Compose([
+                transforms.Resize(int(self.img_size[0] * 1.15)),
+                transforms.CenterCrop(self.img_size),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                   std=[0.229, 0.224, 0.225])
+            ])
+        
+        # Base augmentations for all categories
+        base_transforms = [
+            transforms.RandomHorizontalFlip(0.5),
+            transforms.Resize(int(self.img_size[0] * 1.15)),
+        ]
+        
+        # Category-specific augmentations
+        if category in ['Gaming', 'Animation']:
+            # Stronger augmentations for Gaming and Animation
+            category_transforms = [
+                transforms.RandomRotation(10),  # Moderate rotation
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.15),
+                transforms.RandomResizedCrop(self.img_size[0], scale=(0.75, 1.0)),
+                transforms.RandomApply([
+                    transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))
+                ], p=0.3),  # Motion blur simulation
+            ]
+        elif category == 'Natural_Content':
+            # Moderate augmentations for natural content
+            category_transforms = [
+                transforms.RandomRotation(5),
+                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+                transforms.RandomCrop(self.img_size[0], padding=4),
+            ]
+        else:  # Flat_Content
+            # Minimal augmentations for flat content
+            category_transforms = [
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+                transforms.CenterCrop(self.img_size),
+            ]
+        
+        # Final transforms
+        final_transforms = [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                               std=[0.229, 0.224, 0.225])
+        ]
+        
+        return transforms.Compose(base_transforms + category_transforms + final_transforms)
+
+    def preprocess_video_cpu(self, video_path, augment=False, sampling_strategy='uniform', category=None):
+        """CPU-based video preprocessing with enhanced sampling and augmentation"""
+        frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy, category)
         if len(frames) == 0:
             return None
 
+        # Get category-specific augmentation
+        augment_transform = self.get_category_specific_augmentation(category, augment)
+        
         processed_frames = []
         for frame in frames:
             pil_frame = Image.fromarray(frame)
             if augment:
-                augment_transform = transforms.Compose([
-                    transforms.RandomHorizontalFlip(0.5),
-                    transforms.RandomRotation(15),
-                    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-                    transforms.RandomResizedCrop(self.img_size[0], scale=(0.8, 1.0)),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
-                ])
                 processed_frame = augment_transform(pil_frame)
             else:
                 processed_frame = self.transform(pil_frame)
@@ -258,8 +385,8 @@ class VideoPreprocessor:
         video_tensor = torch.stack(processed_frames)
         return video_tensor
 
-    def preprocess_video_batch_gpu(self, video_paths, augment=False, sampling_strategy='uniform'):
-        """GPU-based batch video preprocessing"""
+    def preprocess_video_batch_gpu(self, video_paths, augment=False, sampling_strategy='uniform', category=None):
+        """GPU-based batch video preprocessing with enhanced features"""
         all_processed_videos = []
         successful_filenames = []
         
@@ -278,13 +405,12 @@ class VideoPreprocessor:
             # Extract frames for all videos in batch (CPU operation)
             for video_path in batch_paths:
                 try:
-                    frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy)
+                    frames = self.extract_frames(video_path, self.frames_per_video, sampling_strategy, category)
                     if len(frames) > 0:
                         batch_frames_list.append(frames)
                         batch_filenames.append(video_path.name)
                     video_pbar.update(1)
                 except Exception as e:
-                    # Silently skip failed videos to keep progress smooth
                     video_pbar.update(1)
                     continue
             
@@ -310,25 +436,25 @@ class VideoPreprocessor:
                 elif len(frame_tensors) > self.frames_per_video:
                     frame_tensors = frame_tensors[:self.frames_per_video]
                 
-                video_tensor = torch.stack(frame_tensors)  # Shape: [frames, channels, height, width]
+                video_tensor = torch.stack(frame_tensors)
                 batch_tensors.append(video_tensor)
             
             if batch_tensors:
                 # Stack into batch and move to GPU
-                batch_tensor = torch.stack(batch_tensors).to(self.device)  # [batch, frames, channels, height, width]
+                batch_tensor = torch.stack(batch_tensors).to(self.device)
                 
-                # Reshape for processing: [batch*frames, channels, height, width]
+                # Reshape for processing
                 original_shape = batch_tensor.shape
                 reshaped_tensor = batch_tensor.view(-1, *batch_tensor.shape[2:])
                 
                 # Apply normalization on GPU
                 normalized_tensor = self.normalize_on_gpu(reshaped_tensor)
                 
-                # Apply augmentations if needed
+                # Apply category-specific augmentations if needed
                 if augment:
-                    normalized_tensor = self.apply_augmentations_gpu(normalized_tensor)
+                    normalized_tensor = self.apply_augmentations_gpu(normalized_tensor, category)
                 
-                # Reshape back to [batch, frames, channels, height, width]
+                # Reshape back
                 processed_batch = normalized_tensor.view(original_shape)
                 
                 # Move back to CPU and add to results
@@ -364,11 +490,12 @@ class VideoPreprocessor:
 
         print(f"  Processing {len(video_files)} videos in {category}/{subcategory} ({split_name}) with '{sampling_strategy}' strategy...")
         print(f"  Mode: {self.processing_mode.upper()}")
+        print(f"  Frames per video: {self.frames_per_video}, Resolution: {self.img_size}")
 
         if self.processing_mode == 'gpu':
             # GPU batch processing
             all_processed_videos, successful_filenames = self.preprocess_video_batch_gpu(
-                video_files, augment=augment, sampling_strategy=sampling_strategy
+                video_files, augment=augment, sampling_strategy=sampling_strategy, category=category
             )
             
             if all_processed_videos:
@@ -384,7 +511,11 @@ class VideoPreprocessor:
 
             for video_path in tqdm(video_files, desc=f"{category}-{subcategory}"):
                 try:
-                    video_tensor = self.preprocess_video_cpu(video_path, augment=augment, sampling_strategy=sampling_strategy)
+                    video_tensor = self.preprocess_video_cpu(
+                        video_path, augment=augment, 
+                        sampling_strategy=sampling_strategy, 
+                        category=category
+                    )
                     if video_tensor is not None:
                         processed_data.append(video_tensor)
                         labels.append(category_idx)
@@ -465,6 +596,10 @@ class VideoPreprocessor:
                 print(f"\nCategory: {category}")
                 print(f"Unprocessed subcategories: {len(unprocessed)}")
                 
+                # Suggest adaptive strategy for Gaming/Animation
+                if category in ['Gaming', 'Animation']:
+                    print(f"Recommendation: Use 'Adaptive Multi-Clip' for {category} (better temporal coverage)")
+                
                 strategies[category] = {}
                 for subcat in unprocessed:
                     strategy = self.get_sampling_strategy_for_subcategory(category, subcat)
@@ -488,6 +623,8 @@ class VideoPreprocessor:
         # Show summary of what will be processed
         total_subcats = sum(len(subcats) for subcats in strategies.values())
         print(f"Total subcategories to process: {total_subcats}")
+        print(f"Frames per video: {self.frames_per_video}")
+        print(f"Resolution: {self.img_size}")
         
         for category, subcats in strategies.items():
             print(f"\n{category}: {list(subcats.keys())}")
@@ -584,6 +721,11 @@ class VideoPreprocessor:
 
             category_idx = self.all_categories.index(selected_category)
 
+            # Provide recommendation for Gaming/Animation
+            if selected_category in ['Gaming', 'Animation']:
+                print(f"\n💡 Recommendation: For {selected_category}, consider using 'Adaptive Multi-Clip' or 'Multi-Clip' strategy")
+                print("   This captures multiple temporal segments for better representation of dynamic content.")
+
             # If resuming, skip subcategories until we reach last one
             resume_mode = (selected_category == start_from_category) if start_from_category else False
             skip = bool(resume_point)
@@ -607,6 +749,17 @@ class VideoPreprocessor:
             print(f"Completed processing for remaining subcategories in '{selected_category}'.")
 
     def interactive_process(self):
+        print("\n" + "="*60)
+        print("ENHANCED VIDEO PREPROCESSOR v2.0")
+        print("="*60)
+        print("\nKey Improvements:")
+        print("✓ Increased frames: 32 → 64 for better temporal coverage")
+        print("✓ Higher resolution: 224×224 → 256×256 for more detail")
+        print("✓ Multi-clip sampling for Gaming/Animation categories")
+        print("✓ Category-specific augmentations")
+        print("✓ Aspect ratio preservation")
+        print("="*60)
+        
         # Setup processing mode first
         self.setup_processing_mode()
         
@@ -626,8 +779,8 @@ def main():
     preprocessor = VideoPreprocessor(
         input_dir="video_classification_project/data/raw",
         output_dir="video_classification_project/data/processed",
-        frames_per_video=32,
-        img_size=(224, 224),
+        frames_per_video=64,  # Increased from 32
+        img_size=(256, 256),  # Increased from (224, 224)
         clip_duration=10
     )
     preprocessor.interactive_process()

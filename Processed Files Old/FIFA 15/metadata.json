@@ -1,0 +1,18 @@
+{
+  "num_videos": 3,
+  "frames_per_video": 32,
+  "image_size": [
+    224,
+    224
+  ],
+  "category_mapping": {
+    "Gaming": 1
+  },
+  "augmented": true,
+  "selected_category": "Gaming",
+  "selected_subcategory": "FIFA 15",
+  "sampling_strategy": "middle_clip",
+  "processing_mode": "gpu",
+  "device_used": "cuda",
+  "batch_size_used": 4
+}
