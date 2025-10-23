@@ -49,6 +49,7 @@ video_classification_project/data/processed/val/*
 
 # Old processed files (ignore completely)
 Processed Files Old/
+models old/
 
 # Dataset folder
 Dataset/

@@ -1047,15 +1047,32 @@ class EnhancedTemporalModelTrainer:
                 
                 print(f"   🏆 New best model! Val Acc={val_metrics['accuracy']:.2f}%")
                 
+                # Enhanced checkpoint with all metadata for analyzer
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'metrics': val_metrics,
-                    'history': model_history,
+                    'metrics': val_metrics,  # Current epoch validation metrics
+                    'train_metrics': train_metrics,  # Current epoch training metrics
+                    'history': model_history,  # Full training history
                     'best_val_acc': best_val_acc,
                     'best_epoch': best_epoch,
-                    'patience_counter': patience_counter
+                    'patience_counter': patience_counter,
+                    'model_config': {  # Model configuration for reference
+                        'feature_dim': self.feature_dim,
+                        'hidden_dim': 768,
+                        'num_classes': self.num_classes,
+                        'num_lstm_layers': 4,
+                        'num_attention_heads': 12,
+                        'dropout': 0.4,
+                        'bidirectional': True
+                    },
+                    'training_config': {  # Training configuration
+                        'learning_rate': learning_rate,
+                        'batch_size': batch_size,
+                        'num_epochs': num_epochs,
+                        'patience': patience
+                    }
                 }, self.output_dir / f'best_{model_name}.pt')
             else:
                 patience_counter += 1
@@ -1067,10 +1084,27 @@ class EnhancedTemporalModelTrainer:
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'history': model_history,
+                    'metrics': val_metrics,  # Current epoch validation metrics
+                    'train_metrics': train_metrics,  # Current epoch training metrics
+                    'history': model_history,  # Full training history
                     'best_val_acc': best_val_acc,
                     'best_epoch': best_epoch,
-                    'patience_counter': patience_counter
+                    'patience_counter': patience_counter,
+                    'model_config': {
+                        'feature_dim': self.feature_dim,
+                        'hidden_dim': 768,
+                        'num_classes': self.num_classes,
+                        'num_lstm_layers': 4,
+                        'num_attention_heads': 12,
+                        'dropout': 0.4,
+                        'bidirectional': True
+                    },
+                    'training_config': {
+                        'learning_rate': learning_rate,
+                        'batch_size': batch_size,
+                        'num_epochs': num_epochs,
+                        'patience': patience
+                    }
                 }, checkpoint_path)
                 print(f"   💾 Checkpoint saved: {checkpoint_path.name}")
                 
