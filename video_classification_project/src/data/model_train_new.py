@@ -1,16 +1,7 @@
 """
 TWO-STAGE VIDEO CLASSIFICATION TRAINER - ENHANCED FOR >95% ACCURACY
-✅ WITH RESUME, CHECKPOINT MANAGEMENT, AND REAL-TIME ETA
 
 Optimized for 9.6GB GPU with 251GB RAM
-
-NEW FEATURES:
-- ✅ Resume training from checkpoints
-- ✅ Automatic checkpoint detection
-- ✅ Real-time ETA calculation (per-epoch and per-batch)
-- ✅ Checkpoint auto-cleanup (keeps last 3)
-- ✅ Enhanced progress tracking
-- ✅ Complete training state preservation
 
 TIER 1 & TIER 2 IMPROVEMENTS:
 - Multiple backbone options (ResNet50/101, EfficientNetV2)
@@ -48,6 +39,16 @@ from sklearn.metrics import f1_score, precision_recall_fscore_support
 import random
 
 warnings.filterwarnings('ignore')
+
+# Visualization imports
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for server environments
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
 
 
 # ============================================================================
@@ -208,65 +209,65 @@ class EnhancedFeatureExtractor:
                             print(f"\nSkipping video {video_idx} from {video_file.name}: Too few frames ({num_frames})")
                             failed_extractions += 1
                             continue
+                        
+                        # Multi-scale extraction if enabled
+                        if self.multi_scale:
+                            scales = [1.0, 0.85, 1.15]
+                            scale_features = []
                             
-                            # Multi-scale extraction if enabled
-                            if self.multi_scale:
-                                scales = [1.0, 0.85, 1.15]
-                                scale_features = []
+                            for scale in scales:
+                                if scale != 1.0:
+                                    new_length = max(int(num_frames * scale), 5)
+                                    indices = np.linspace(0, num_frames - 1, new_length).astype(int)
+                                    scaled_video = video[indices]
+                                else:
+                                    scaled_video = video
                                 
-                                for scale in scales:
-                                    if scale != 1.0:
-                                        new_length = max(int(num_frames * scale), 5)
-                                        indices = np.linspace(0, num_frames - 1, new_length).astype(int)
-                                        scaled_video = video[indices]
-                                    else:
-                                        scaled_video = video
-                                    
-                                    # Extract features for this scale
-                                    scale_num_frames = scaled_video.shape[0]
-                                    frame_features = []
-                                    
-                                    for i in range(0, scale_num_frames, batch_size):
-                                        batch = scaled_video[i:i+batch_size].to(self.device)
-                                        features = self.cnn(batch)
-                                        frame_features.append(features.cpu())
-                                        del batch
-                                    
-                                    scale_feat = torch.cat(frame_features, dim=0)
-                                    scale_features.append(scale_feat)
-                                
-                                # Concatenate multi-scale features
-                                max_len = max(sf.shape[0] for sf in scale_features)
-                                padded_scales = []
-                                for sf in scale_features:
-                                    if sf.shape[0] < max_len:
-                                        padding = torch.zeros(max_len - sf.shape[0], sf.shape[1])
-                                        sf = torch.cat([sf, padding], dim=0)
-                                    padded_scales.append(sf)
-                                
-                                # Average across scales
-                                video_features = torch.stack(padded_scales).mean(dim=0)
-                                
-                            else:
-                                # Single-scale extraction
+                                # Extract features for this scale
+                                scale_num_frames = scaled_video.shape[0]
                                 frame_features = []
-                                for i in range(0, num_frames, batch_size):
-                                    batch = video[i:i+batch_size].to(self.device)
+                                
+                                for i in range(0, scale_num_frames, batch_size):
+                                    batch = scaled_video[i:i+batch_size].to(self.device)
                                     features = self.cnn(batch)
                                     frame_features.append(features.cpu())
                                     del batch
                                 
-                                video_features = torch.cat(frame_features, dim=0)
+                                scale_feat = torch.cat(frame_features, dim=0)
+                                scale_features.append(scale_feat)
                             
-                            all_features.append(video_features.numpy())
-                            all_labels.append(labels[file_idx])
-                            all_num_frames.append(video_features.shape[0])
-                            successful_extractions += 1
+                            # Concatenate multi-scale features
+                            max_len = max(sf.shape[0] for sf in scale_features)
+                            padded_scales = []
+                            for sf in scale_features:
+                                if sf.shape[0] < max_len:
+                                    padding = torch.zeros(max_len - sf.shape[0], sf.shape[1])
+                                    sf = torch.cat([sf, padding], dim=0)
+                                padded_scales.append(sf)
                             
-                            # Memory cleanup
-                            if file_idx % 50 == 0:
-                                torch.cuda.empty_cache()
-                                gc.collect()
+                            # Average across scales
+                            video_features = torch.stack(padded_scales).mean(dim=0)
+                            
+                        else:
+                            # Single-scale extraction
+                            frame_features = []
+                            for i in range(0, num_frames, batch_size):
+                                batch = video[i:i+batch_size].to(self.device)
+                                features = self.cnn(batch)
+                                frame_features.append(features.cpu())
+                                del batch
+                            
+                            video_features = torch.cat(frame_features, dim=0)
+                        
+                        all_features.append(video_features.numpy())
+                        all_labels.append(labels[file_idx])
+                        all_num_frames.append(video_features.shape[0])
+                        successful_extractions += 1
+                        
+                        # Memory cleanup
+                        if file_idx % 50 == 0:
+                            torch.cuda.empty_cache()
+                            gc.collect()
                     
                     del data, videos
                     gc.collect()
@@ -623,8 +624,357 @@ class FocalLoss(nn.Module):
         return focal_loss.mean()
 
 
+# ============================================================================
+# REAL-TIME TRAINING VISUALIZER
+# ============================================================================
+
+class RealTimeTrainingVisualizer:
+    """Generate visualizations during training after each epoch"""
+    
+    def __init__(self, output_dir, model_name='model'):
+        self.output_dir = Path(output_dir) / 'training_progress'
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.model_name = model_name
+        
+        # Create subdirectories
+        self.epoch_plots_dir = self.output_dir / 'epoch_plots'
+        self.epoch_plots_dir.mkdir(exist_ok=True)
+        
+        print(f"📊 Training visualizer initialized")
+        print(f"   Output: {self.output_dir}")
+    
+    def plot_epoch_summary(self, history, current_epoch, best_metrics):
+        """Generate comprehensive visualization after each epoch"""
+        
+        # Create figure with multiple subplots
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.35, wspace=0.3)
+        
+        # Title with timestamp
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        fig.suptitle(f'{self.model_name} - Training Progress | Epoch {current_epoch} | {timestamp}',
+                    fontsize=18, fontweight='bold', y=0.98)
+        
+        # 1. Loss Curves (Large)
+        ax1 = fig.add_subplot(gs[0, :2])
+        self._plot_loss_curves(ax1, history, current_epoch, best_metrics)
+        
+        # 2. Accuracy Curves (Large)
+        ax2 = fig.add_subplot(gs[1, :2])
+        self._plot_accuracy_curves(ax2, history, current_epoch, best_metrics)
+        
+        # 3. F1 Scores
+        ax3 = fig.add_subplot(gs[2, :2])
+        self._plot_f1_scores(ax3, history, current_epoch)
+        
+        # 4. Current Metrics Summary
+        ax4 = fig.add_subplot(gs[0, 2])
+        self._plot_current_metrics(ax4, history, current_epoch, best_metrics)
+        
+        # 5. Learning Rate
+        ax5 = fig.add_subplot(gs[1, 2])
+        self._plot_learning_rate(ax5, history, current_epoch)
+        
+        # 6. Per-Class F1 (Current)
+        ax6 = fig.add_subplot(gs[2, 2])
+        self._plot_current_per_class_f1(ax6, history, current_epoch)
+        
+        plt.tight_layout()
+        
+        # Save to both current and epoch-specific file
+        current_file = self.output_dir / f'{self.model_name}_current.png'
+        epoch_file = self.epoch_plots_dir / f'epoch_{current_epoch:03d}.png'
+        
+        plt.savefig(current_file, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.savefig(epoch_file, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        return current_file
+    
+    def _plot_loss_curves(self, ax, history, current_epoch, best_metrics):
+        """Plot training and validation loss with highlights"""
+        epochs = range(len(history['train_loss']))
+        
+        # Plot curves
+        ax.plot(epochs, history['train_loss'], 'b-', linewidth=2.5, 
+               alpha=0.8, label='Train Loss', marker='o', markersize=3)
+        ax.plot(epochs, history['val_loss'], 'r--', linewidth=2.5, 
+               alpha=0.8, label='Val Loss', marker='s', markersize=3)
+        
+        # Mark best epoch
+        if 'epoch' in best_metrics:
+            best_epoch = best_metrics['epoch']
+            if best_epoch < len(history['val_loss']):
+                best_loss = history['val_loss'][best_epoch]
+                ax.scatter([best_epoch], [best_loss], color='gold', s=300, 
+                          zorder=5, marker='*', edgecolors='black', linewidth=2)
+                ax.annotate(f'Best\nEpoch {best_epoch}\n{best_loss:.4f}', 
+                           xy=(best_epoch, best_loss),
+                           xytext=(15, -25), textcoords='offset points',
+                           bbox=dict(boxstyle='round,pad=0.7', facecolor='yellow', alpha=0.8),
+                           arrowprops=dict(arrowstyle='->', color='black', lw=2),
+                           fontsize=10, fontweight='bold')
+        
+        # Mark current epoch
+        if current_epoch < len(history['val_loss']):
+            current_loss = history['val_loss'][current_epoch]
+            ax.scatter([current_epoch], [current_loss], color='lime', s=200,
+                      zorder=5, marker='D', edgecolors='darkgreen', linewidth=2)
+        
+        ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Loss', fontsize=12, fontweight='bold')
+        ax.set_title('Training & Validation Loss', fontsize=14, fontweight='bold', pad=15)
+        ax.legend(loc='best', fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_facecolor('#f9f9f9')
+    
+    def _plot_accuracy_curves(self, ax, history, current_epoch, best_metrics):
+        """Plot training and validation accuracy with highlights"""
+        epochs = range(len(history['train_acc']))
+        
+        # Plot curves
+        ax.plot(epochs, history['train_acc'], 'b-', linewidth=2.5,
+               alpha=0.8, label='Train Acc', marker='o', markersize=3)
+        ax.plot(epochs, history['val_acc'], 'g--', linewidth=2.5,
+               alpha=0.8, label='Val Acc', marker='s', markersize=3)
+        
+        # Mark best epoch
+        if 'epoch' in best_metrics:
+            best_epoch = best_metrics['epoch']
+            if best_epoch < len(history['val_acc']):
+                best_acc = history['val_acc'][best_epoch]
+                ax.scatter([best_epoch], [best_acc], color='gold', s=300,
+                          zorder=5, marker='*', edgecolors='black', linewidth=2)
+                ax.annotate(f'Best\nEpoch {best_epoch}\n{best_acc:.2f}%',
+                           xy=(best_epoch, best_acc),
+                           xytext=(15, 20), textcoords='offset points',
+                           bbox=dict(boxstyle='round,pad=0.7', facecolor='lightgreen', alpha=0.8),
+                           arrowprops=dict(arrowstyle='->', color='black', lw=2),
+                           fontsize=10, fontweight='bold')
+        
+        # Mark current epoch
+        if current_epoch < len(history['val_acc']):
+            current_acc = history['val_acc'][current_epoch]
+            ax.scatter([current_epoch], [current_acc], color='lime', s=200,
+                      zorder=5, marker='D', edgecolors='darkgreen', linewidth=2)
+        
+        # Add 95% target line
+        ax.axhline(y=95, color='purple', linestyle=':', linewidth=2, 
+                  alpha=0.7, label='Target (95%)')
+        
+        ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
+        ax.set_title('Training & Validation Accuracy', fontsize=14, fontweight='bold', pad=15)
+        ax.legend(loc='best', fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_facecolor('#f9f9f9')
+    
+    def _plot_f1_scores(self, ax, history, current_epoch):
+        """Plot F1 score progression"""
+        if 'train_f1' not in history or not history['train_f1']:
+            ax.text(0.5, 0.5, 'No F1 data yet', ha='center', va='center', 
+                   fontsize=14, transform=ax.transAxes)
+            ax.axis('off')
+            return
+        
+        epochs = range(len(history['train_f1']))
+        
+        ax.plot(epochs, history['train_f1'], 'b-', linewidth=2.5,
+               alpha=0.8, label='Train F1', marker='o', markersize=3)
+        ax.plot(epochs, history['val_f1'], 'orange', linestyle='--', linewidth=2.5,
+               alpha=0.8, label='Val F1', marker='s', markersize=3)
+        
+        # Mark current
+        if current_epoch < len(history['val_f1']):
+            current_f1 = history['val_f1'][current_epoch]
+            ax.scatter([current_epoch], [current_f1], color='lime', s=200,
+                      zorder=5, marker='D', edgecolors='darkgreen', linewidth=2)
+        
+        ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
+        ax.set_ylabel('F1 Score (%)', fontsize=12, fontweight='bold')
+        ax.set_title('F1 Score Progression', fontsize=14, fontweight='bold', pad=15)
+        ax.legend(loc='best', fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_facecolor('#f9f9f9')
+    
+    def _plot_current_metrics(self, ax, history, current_epoch, best_metrics):
+        """Display current and best metrics as text"""
+        ax.axis('off')
+        
+        text = "📊 METRICS SUMMARY\n" + "="*35 + "\n\n"
+        
+        text += f"Current Epoch: {current_epoch}\n"
+        if 'epoch' in best_metrics:
+            text += f"Best Epoch: {best_metrics['epoch']}\n\n"
+        
+        # Current metrics
+        if current_epoch < len(history['val_acc']):
+            text += "CURRENT:\n"
+            text += f"  Val Acc:  {history['val_acc'][current_epoch]:.2f}%\n"
+            text += f"  Val Loss: {history['val_loss'][current_epoch]:.4f}\n"
+            if 'val_f1' in history and current_epoch < len(history['val_f1']):
+                text += f"  Val F1:   {history['val_f1'][current_epoch]:.2f}%\n"
+            text += "\n"
+        
+        # Best metrics
+        if 'val_acc' in best_metrics:
+            text += "BEST:\n"
+            text += f"  Val Acc:  {best_metrics['val_acc']:.2f}%\n"
+        if 'val_f1' in best_metrics:
+            text += f"  Val F1:   {best_metrics['val_f1']:.2f}%\n"
+        if 'worst_class_f1' in best_metrics:
+            text += f"  Worst F1: {best_metrics['worst_class_f1']:.2f}%\n"
+        
+        # Improvement
+        if current_epoch < len(history['val_acc']) and history['val_acc']:
+            improvement = history['val_acc'][current_epoch] - history['val_acc'][0]
+            text += f"\nIMPROVEMENT: {improvement:+.2f}%\n"
+            
+            # Progress to target
+            target = 95.0
+            current_acc = history['val_acc'][current_epoch]
+            progress = (current_acc / target) * 100
+            text += f"Progress: {progress:.1f}% to target\n"
+        
+        ax.text(0.05, 0.95, text, transform=ax.transAxes,
+               fontsize=11, verticalalignment='top', family='monospace',
+               bbox=dict(boxstyle='round,pad=1', facecolor='lightyellow', 
+                        alpha=0.8, edgecolor='orange', linewidth=2))
+    
+    def _plot_learning_rate(self, ax, history, current_epoch):
+        """Plot learning rate schedule"""
+        if 'learning_rates' not in history or not history['learning_rates']:
+            ax.text(0.5, 0.5, 'No LR data yet', ha='center', va='center',
+                   fontsize=14, transform=ax.transAxes)
+            ax.axis('off')
+            return
+        
+        epochs = range(len(history['learning_rates']))
+        lr_values = history['learning_rates']
+        
+        ax.plot(epochs, lr_values, 'purple', linewidth=2.5, 
+               marker='o', markersize=4, alpha=0.8)
+        
+        # Mark current
+        if current_epoch < len(lr_values):
+            current_lr = lr_values[current_epoch]
+            ax.scatter([current_epoch], [current_lr], color='lime', s=200,
+                      zorder=5, marker='D', edgecolors='darkgreen', linewidth=2)
+            ax.text(current_epoch, current_lr, f'\n{current_lr:.6f}',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        ax.set_xlabel('Epoch', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Learning Rate', fontsize=11, fontweight='bold')
+        ax.set_title('Learning Rate Schedule', fontsize=12, fontweight='bold', pad=10)
+        ax.set_yscale('log')
+        ax.grid(True, alpha=0.3, which='both')
+        ax.set_facecolor('#f9f9f9')
+    
+    def _plot_current_per_class_f1(self, ax, history, current_epoch):
+        """Plot current per-class F1 scores as bar chart"""
+        if 'val_per_class_f1' not in history or not history['val_per_class_f1']:
+            ax.text(0.5, 0.5, 'No per-class data yet', ha='center', va='center',
+                   fontsize=14, transform=ax.transAxes)
+            ax.axis('off')
+            return
+        
+        if current_epoch >= len(history['val_per_class_f1']):
+            current_epoch = len(history['val_per_class_f1']) - 1
+        
+        per_class_f1 = history['val_per_class_f1'][current_epoch]
+        num_classes = len(per_class_f1)
+        class_names = [f'Class {i}' for i in range(num_classes)]
+        
+        colors = plt.cm.tab10(np.linspace(0, 1, num_classes))
+        bars = ax.bar(class_names, per_class_f1, color=colors, alpha=0.7,
+                     edgecolor='black', linewidth=1.5)
+        
+        # Add value labels on bars
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.1f}%', ha='center', va='bottom',
+                   fontsize=10, fontweight='bold')
+        
+        # Add mean line
+        mean_f1 = np.mean(per_class_f1)
+        ax.axhline(y=mean_f1, color='red', linestyle='--', linewidth=2,
+                  alpha=0.7, label=f'Mean: {mean_f1:.1f}%')
+        
+        ax.set_ylabel('F1 Score (%)', fontsize=11, fontweight='bold')
+        ax.set_title(f'Per-Class F1 (Epoch {current_epoch})', 
+                    fontsize=12, fontweight='bold', pad=10)
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_ylim([0, 105])
+    
+    def create_summary_gif(self):
+        """Create animated GIF from epoch plots (optional)"""
+        try:
+            from PIL import Image
+            
+            epoch_files = sorted(self.epoch_plots_dir.glob('epoch_*.png'))
+            if len(epoch_files) < 2:
+                return
+            
+            images = [Image.open(f) for f in epoch_files]
+            
+            gif_path = self.output_dir / f'{self.model_name}_training_animation.gif'
+            images[0].save(
+                gif_path,
+                save_all=True,
+                append_images=images[1:],
+                duration=500,
+                loop=0
+            )
+            
+            print(f"🎬 Created training animation: {gif_path}")
+            
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"⚠️ Could not create GIF: {e}")
+    
+    def save_metrics_csv(self, history, filename='training_metrics.csv'):
+        """Save training metrics to CSV for external analysis"""
+        df_data = {}
+        
+        for key, values in history.items():
+            if isinstance(values, list) and values:
+                if key == 'val_per_class_f1':
+                    per_class = np.array(values)
+                    if per_class.ndim == 2:
+                        for i in range(per_class.shape[1]):
+                            df_data[f'class_{i}_f1'] = per_class[:, i].tolist()
+                else:
+                    df_data[key] = values
+        
+        df = pd.DataFrame(df_data)
+        csv_path = self.output_dir / filename
+        df.to_csv(csv_path, index_label='epoch')
+        
+        return csv_path
+    
+    def save_training_summary(self, history, best_metrics, final_metrics):
+        """Save comprehensive training summary JSON"""
+        summary = {
+            'model_name': self.model_name,
+            'timestamp': datetime.now().isoformat(),
+            'total_epochs': len(history.get('train_loss', [])),
+            'best_metrics': best_metrics,
+            'final_metrics': final_metrics,
+            'training_completed': True
+        }
+        
+        summary_path = self.output_dir / 'training_summary.json'
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        return summary_path
+
+
 class EnhancedTemporalModelTrainer:
-    """Enhanced trainer with ensemble, TTA, resume, and ETA support"""
+    """Enhanced trainer with ensemble, TTA, resume, ETA and visualization support"""
     
     def __init__(self, features_dir, output_dir, device='cuda'):
         self.features_dir = Path(features_dir)
@@ -641,6 +991,9 @@ class EnhancedTemporalModelTrainer:
         self.best_metrics = {
             'val_acc': 0, 'val_f1': 0, 'worst_class_f1': 0, 'epoch': 0
         }
+        
+        # Initialize visualizer (will be set in train_single_model)
+        self.visualizer = None
     
     def create_dataloaders(self, batch_size=48, num_workers=4, feature_file_suffix=''):
         """Create dataloaders"""
@@ -731,6 +1084,32 @@ class EnhancedTemporalModelTrainer:
             'f1_weighted': avg_f1 * 100,
             'f1_per_class': f1 * 100
         }
+    
+    def validate(self, model, loader, criterion):
+        """Validation function"""
+        model.eval()
+        
+        running_loss = 0.0
+        all_outputs, all_labels = [], []
+        
+        with torch.no_grad():
+            for features, labels, lengths in loader:
+                features = features.to(self.device)
+                labels = labels.to(self.device)
+                lengths = lengths.to(self.device)
+                
+                outputs = model(features, lengths)
+                loss = criterion(outputs, labels)
+                
+                running_loss += loss.item()
+                all_outputs.append(outputs.cpu())
+                all_labels.append(labels.cpu())
+        
+        all_outputs = torch.cat(all_outputs)
+        all_labels = torch.cat(all_labels)
+        metrics = self.compute_metrics(all_outputs, all_labels)
+        
+        return running_loss / len(loader), metrics
     
     def train_epoch(self, model, loader, criterion, optimizer, scheduler, epoch):
         model.train()
@@ -892,6 +1271,10 @@ class EnhancedTemporalModelTrainer:
         print(f"TRAINING MODEL: {model_name}")
         print(f"{'='*70}")
         
+        # Initialize visualizer for this model (results folder)
+        results_dir = Path('video_classification_project/results')
+        self.visualizer = RealTimeTrainingVisualizer(results_dir, model_name)
+        
         # Check for existing checkpoints if resume_from not specified
         if resume_from is None:
             latest_checkpoint = self._find_latest_checkpoint(model_name)
@@ -1039,6 +1422,18 @@ class EnhancedTemporalModelTrainer:
             print(f"   📅 ETA: {eta_str}")
             print(f"   💾 GPU Memory: {torch.cuda.memory_allocated()/1e9:.2f}GB / {torch.cuda.max_memory_allocated()/1e9:.2f}GB peak")
             
+            # Generate and save visualizations
+            try:
+                plot_file = self.visualizer.plot_epoch_summary(
+                    model_history, epoch, 
+                    {'epoch': best_epoch, 'val_acc': best_val_acc, 
+                     'val_f1': model_history['val_f1'][best_epoch] if best_epoch < len(model_history['val_f1']) else 0,
+                     'worst_class_f1': worst_class_f1}
+                )
+                print(f"   📊 Visualization saved: {plot_file.name}")
+            except Exception as e:
+                print(f"   ⚠️ Visualization failed: {e}")
+            
             # Save best model
             if val_metrics['accuracy'] > best_val_acc:
                 best_val_acc = val_metrics['accuracy']
@@ -1052,13 +1447,13 @@ class EnhancedTemporalModelTrainer:
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'metrics': val_metrics,  # Current epoch validation metrics
-                    'train_metrics': train_metrics,  # Current epoch training metrics
-                    'history': model_history,  # Full training history
+                    'metrics': val_metrics,
+                    'train_metrics': train_metrics,
+                    'history': model_history,
                     'best_val_acc': best_val_acc,
                     'best_epoch': best_epoch,
                     'patience_counter': patience_counter,
-                    'model_config': {  # Model configuration for reference
+                    'model_config': {
                         'feature_dim': self.feature_dim,
                         'hidden_dim': 768,
                         'num_classes': self.num_classes,
@@ -1067,7 +1462,7 @@ class EnhancedTemporalModelTrainer:
                         'dropout': 0.4,
                         'bidirectional': True
                     },
-                    'training_config': {  # Training configuration
+                    'training_config': {
                         'learning_rate': learning_rate,
                         'batch_size': batch_size,
                         'num_epochs': num_epochs,
@@ -1084,9 +1479,9 @@ class EnhancedTemporalModelTrainer:
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'metrics': val_metrics,  # Current epoch validation metrics
-                    'train_metrics': train_metrics,  # Current epoch training metrics
-                    'history': model_history,  # Full training history
+                    'metrics': val_metrics,
+                    'train_metrics': train_metrics,
+                    'history': model_history,
                     'best_val_acc': best_val_acc,
                     'best_epoch': best_epoch,
                     'patience_counter': patience_counter,
@@ -1166,6 +1561,24 @@ class EnhancedTemporalModelTrainer:
         print(f"   Test Acc (Standard): {test_metrics['accuracy']:.2f}%")
         print(f"   Test Acc (TTA): {tta_metrics['accuracy']:.2f}%")
         print(f"   Improvement from TTA: +{tta_metrics['accuracy'] - test_metrics['accuracy']:.2f}%")
+        
+        # Save final metrics and summaries
+        try:
+            csv_path = self.visualizer.save_metrics_csv(model_history)
+            print(f"   📊 Metrics CSV saved: {csv_path}")
+            
+            summary_path = self.visualizer.save_training_summary(
+                model_history,
+                {'epoch': best_epoch, 'val_acc': best_val_acc},
+                {'test_acc_standard': test_metrics['accuracy'], 
+                 'test_acc_tta': tta_metrics['accuracy']}
+            )
+            print(f"   📋 Summary saved: {summary_path}")
+            
+            # Create animation if possible
+            self.visualizer.create_summary_gif()
+        except Exception as e:
+            print(f"   ⚠️ Could not save final summaries: {e}")
         
         return model, results
     
@@ -1298,13 +1711,14 @@ def main():
     print("="*70)
     print("ENHANCED TWO-STAGE VIDEO CLASSIFIER")
     print("Target: >95% Accuracy")
-    print("✅ WITH RESUME, CHECKPOINTS & REAL-TIME ETA")
+    print("✅ WITH RESUME, CHECKPOINTS, ETA & VISUALIZATIONS")
     print("="*70)
     
     # Configuration
     data_dir = Path("video_classification_project/data/processed")
     features_dir = Path("video_classification_project/features_enhanced")
     models_dir = Path("video_classification_project/models_enhanced")
+    results_dir = Path("video_classification_project/results")
     
     # Check GPU
     if torch.cuda.is_available():
@@ -1321,6 +1735,7 @@ def main():
     
     features_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
     
     # Check for interrupted training
     existing_checkpoints = list(models_dir.glob('*_checkpoint_epoch_*.pt'))
@@ -1387,6 +1802,7 @@ def main():
     print(f"   Backbone: {backbone}")
     print(f"   Multi-scale: {multi_scale}")
     print(f"   Ensemble size: {num_ensemble_models}")
+    print(f"   Results directory: {results_dir}")
     
     # ========================================================================
     # STAGE 1: ENHANCED FEATURE EXTRACTION
@@ -1473,15 +1889,20 @@ def main():
         print("🎉 TRAINING COMPLETED SUCCESSFULLY!")
         print(f"{'='*70}")
         print(f"\n🎯 FINAL ACCURACY: {final_accuracy:.2f}%")
+        print(f"\n📁 Results saved to: {results_dir}")
+        print(f"   - Training visualizations: {results_dir}/training_progress/")
+        print(f"   - Epoch plots: {results_dir}/training_progress/epoch_plots/")
+        print(f"   - Metrics CSV: {results_dir}/training_progress/training_metrics.csv")
+        print(f"   - Summary JSON: {results_dir}/training_progress/training_summary.json")
         
         if final_accuracy >= 95.0:
-            print(f"   ✅✅✅ TARGET ACHIEVED (>95%)")
+            print(f"\n   ✅✅✅ TARGET ACHIEVED (>95%)")
         elif final_accuracy >= 93.0:
-            print(f"   ✅✅ Excellent performance!")
+            print(f"\n   ✅✅ Excellent performance!")
         elif final_accuracy >= 90.0:
-            print(f"   ✅ Good performance!")
+            print(f"\n   ✅ Good performance!")
         else:
-            print(f"   ⚠️ Below target, consider:")
+            print(f"\n   ⚠️ Below target, consider:")
             print(f"      - Training longer")
             print(f"      - Larger ensemble")
             print(f"      - Better backbone")
@@ -1522,38 +1943,6 @@ if __name__ == "__main__":
 # ============================================================================
 
 """
-✅ NEW FEATURES ADDED:
-======================
-
-1. RESUME TRAINING FROM CHECKPOINTS
-   - Automatic detection of interrupted training
-   - Full state restoration (model, optimizer, LR, patience)
-   - Manual checkpoint selection supported
-   - Preserves complete training history
-
-2. CHECKPOINT MANAGEMENT
-   - Best model saved continuously
-   - Periodic checkpoints every 20 epochs
-   - Auto-cleanup: keeps only last 3 checkpoints
-   - Disk space optimized
-
-3. REAL-TIME ETA CALCULATION
-   - Per-epoch ETA based on last 5 epochs
-   - Per-batch ETA during training
-   - Adaptive estimation improves over time
-   - Human-readable time format (HH:MM:SS)
-
-4. ENHANCED PROGRESS TRACKING
-   - Detailed metrics per epoch
-   - GPU memory monitoring (current + peak)
-   - Learning rate tracking
-   - Training time statistics
-
-5. PRODUCTION-READY FEATURES
-   - Safe keyboard interrupt handling
-   - Complete training state preservation
-   - Informative error messages
-   - Easy recovery from failures
 
 EXPECTED PERFORMANCE:
 =====================
@@ -1618,46 +2007,6 @@ USAGE EXAMPLES:
       Patience counter: 3/25
       Continuing training...
 
-TRAINING OUTPUT EXAMPLE:
-========================
-
-📅 Epoch 45/149
-Epoch 45: 100%|████████████| 124/124 [08:32<00:00]
-   loss: 0.2341, gpu: 7.2GB, eta: 0:00:12
-
-📊 Epoch 45 Results:
-   Train: Loss=0.2341, Acc=92.34%, F1=92.18%
-   Val: Loss=0.2856, Acc=91.45%, F1=91.23%
-   Per-class F1: ['89.2', '93.1', '90.8', '92.5']
-   Worst-class F1: 89.23%
-   LR: 0.000234
-   ⏱️ Epoch time: 0:08:32
-   📅 ETA: 8:54:28
-   💾 GPU Memory: 7.23GB / 8.12GB peak
-   🏆 New best model! Val Acc=91.45%
-
-Epoch 60/149
-   💾 Checkpoint saved: single_model_checkpoint_epoch_60.pt
-   🗑️ Removed old checkpoint: single_model_checkpoint_epoch_20.pt
-
-CHECKPOINT FILE STRUCTURE:
-==========================
-Each checkpoint contains:
-{
-    'epoch': 60,                        # Current epoch
-    'model_state_dict': {...},          # Model weights
-    'optimizer_state_dict': {...},      # Optimizer state
-    'history': {                        # Complete training history
-        'train_loss': [...],
-        'train_acc': [...],
-        'val_loss': [...],
-        'val_acc': [...],
-        ...
-    },
-    'best_val_acc': 91.45,             # Best validation accuracy
-    'best_epoch': 58,                   # Epoch with best accuracy
-    'patience_counter': 2               # Early stopping counter
-}
 
 CHECKPOINT MANAGEMENT:
 ======================
@@ -1680,25 +2029,6 @@ Method 2: Manual Selection
 Method 3: Programmatic
    In main(), set: resume_checkpoint = Path('checkpoint.pt')
 
-REAL-TIME ETA FEATURES:
-=======================
-
-Per-Epoch ETA:
-   - Based on average of last 5 completed epochs
-   - Accounts for validation time
-   - Updates after each epoch
-   - Format: "8:54:28" (hours:minutes:seconds)
-
-Per-Batch ETA (within epoch):
-   - Based on average of last 10 batches
-   - Shows time remaining in current epoch
-   - Updates every batch
-   - Format: "0:05:19"
-
-Example:
-   Epoch 45: 56/124 [04:23<05:19, eta=0:05:19]
-                     ↑      ↑         ↑
-                  elapsed  remain   batch ETA
 
 MEMORY MONITORING:
 ==================
@@ -1719,6 +2049,15 @@ All progress is saved at:
    - Best model checkpoint
    - Last periodic checkpoint (every 20 epochs)
    - Complete training history
+
+Comprehensive Dashboard:
+==========================
+
+20x12 inch high-resolution plots
+6 different visualizations in one image
+Color-coded for easy interpretation
+Best epochs highlighted with gold stars
+Current epoch marked with green diamonds
 
 TROUBLESHOOTING:
 ================
@@ -1743,36 +2082,6 @@ If resume fails:
 2. Verify checkpoint is not corrupted
 3. Try loading manually to diagnose
 
-ADVANCED USAGE:
-===============
-
-Manual Checkpoint Loading:
-```python
-checkpoint = torch.load('path/to/checkpoint.pt')
-model.load_state_dict(checkpoint['model_state_dict'])
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-start_epoch = checkpoint['epoch'] + 1
-```
-
-Custom Resume Logic:
-```python
-# In main(), before calling train_single_model:
-resume_checkpoint = models_dir / 'specific_checkpoint.pt'
-
-trainer.train_single_model(
-    num_epochs=150,
-    batch_size=48,
-    resume_from=resume_checkpoint  # Pass explicitly
-)
-```
-
-Checkpoint Inspection:
-```python
-checkpoint = torch.load('checkpoint.pt')
-print(f"Epoch: {checkpoint['epoch']}")
-print(f"Best Val Acc: {checkpoint['best_val_acc']:.2f}%")
-print(f"History length: {len(checkpoint['history']['train_loss'])}")
-```
 
 PERFORMANCE TIPS:
 =================
@@ -1795,24 +2104,6 @@ For Balanced Approach:
    - 3-model ensemble
    - Expected: 95-96%
 
-FILE STRUCTURE:
-===============
-video_classification_project/
-├── data/
-│   └── processed/
-│       ├── train/
-│       ├── val/
-│       └── test/
-├── features_enhanced/
-│   ├── train_features_multiscale.h5
-│   ├── val_features_multiscale.h5
-│   └── test_features_multiscale.h5
-└── models_enhanced/
-    ├── best_single_model.pt
-    ├── single_model_checkpoint_epoch_40.pt
-    ├── single_model_checkpoint_epoch_60.pt
-    ├── single_model_checkpoint_epoch_80.pt
-    └── single_model_results.json
 
 GUARANTEED:
 ===========
@@ -1838,25 +2129,9 @@ Requirements:
 - Python 3.8+
 - PyTorch 2.0+
 - CUDA 11.7+
-- torchvision, h5py, tqdm, scikit-learn
 
 Tested on:
 - GPU: 9.8GB VRAM (MIG partition)
 - RAM: 251GB
 - Storage: 100GB+ free space
-
-CHANGELOG:
-==========
-v2.0 - Enhanced with Resume & ETA
-   ✅ Added resume training support
-   ✅ Added real-time ETA calculation
-   ✅ Added checkpoint auto-cleanup
-   ✅ Enhanced progress tracking
-   ✅ Improved error handling
-
-v1.0 - Initial Enhanced Version
-   - Multi-backbone support
-   - Test-Time Augmentation
-   - Ensemble training
-   - Multi-scale features
 """
