@@ -40,7 +40,8 @@ try:
     from model_train_new import (
         SuperEnhancedTemporalModel as EnhancedCNNLSTM,
         EnhancedPreExtractedFeaturesDataset as MemoryEfficientVideoDataset,
-        EnhancedTemporalModelTrainer as CheckpointManager
+        EnhancedTemporalModelTrainer as CheckpointManager,
+        collate_features  # ✅ ADDED: Required for variable-length sequences
     )
     print("✓ Successfully imported from model_train_new.py")
 except (ImportError, ModuleNotFoundError) as e:
@@ -113,19 +114,36 @@ class ComprehensiveEvaluator:
             print("No checkpoint provided - skipping model loading")
             checkpoint = None
         
-        # Create dataset - this uses pre-extracted features
+        # Create dataset - this uses pre-extracted features in HDF5 format
         print(f"Loading {self.split} dataset...")
+        
+        # ✅ FIXED: Look for HDF5 feature files (not split directories)
+        feature_file = self.data_dir / f'{self.split}_features.h5'
+        if not feature_file.exists():
+            # Try multiscale version
+            feature_file = self.data_dir / f'{self.split}_features_multiscale.h5'
+        
+        if not feature_file.exists():
+            raise ValueError(
+                f"Feature file not found!\n"
+                f"Expected: {self.data_dir / f'{self.split}_features.h5'}\n"
+                f"Or: {self.data_dir / f'{self.split}_features_multiscale.h5'}\n"
+                f"Please run feature extraction first (Stage 1 of training)."
+            )
+        
+        # ✅ FIXED: Use correct dataset class with HDF5 file
         dataset = MemoryEfficientVideoDataset(
-            features_dir=self.data_dir,
-            split=self.split
+            feature_file=feature_file,
+            augment=False
         )
         
         if len(dataset) == 0:
             raise ValueError(f"{self.split} dataset is empty!")
         
-        # Get category mapping
+        # Get category mapping and feature dimension from dataset
         self.category_mapping = dataset.category_mapping
-        self.num_classes = len(self.category_mapping) if self.category_mapping else 4
+        self.num_classes = len(self.category_mapping)
+        self.feature_dim = dataset.feature_dim  # ✅ ADDED: Get from dataset
         self.class_names = [None] * self.num_classes
         
         for name, idx in self.category_mapping.items():
@@ -139,19 +157,34 @@ class ComprehensiveEvaluator:
         if checkpoint:
             print(f"\nInitializing model...")
             
-            # Get model configuration from checkpoint or use defaults
-            config = checkpoint.get('config', {})
-            input_dim = config.get('input_dim', 2048)  # ResNet50 features
-            hidden_dim = config.get('hidden_dim', 512)
-            num_layers = config.get('num_layers', 3)
-            dropout = config.get('dropout', 0.3)
+            # ✅ FIXED: Get model configuration from checkpoint
+            # Training saves as 'model_config', fallback to 'config' for compatibility
+            config = checkpoint.get('model_config', checkpoint.get('config', {}))
             
+            # ✅ FIXED: Use feature_dim from config or dataset (they should match)
+            input_dim = config.get('feature_dim', self.feature_dim)
+            hidden_dim = config.get('hidden_dim', 768)
+            num_layers = config.get('num_lstm_layers', 4)
+            num_attention_heads = config.get('num_attention_heads', 12)
+            dropout = config.get('dropout', 0.4)
+            bidirectional = config.get('bidirectional', True)
+            
+            print(f"   Model config from checkpoint:")
+            print(f"      Feature dim: {input_dim}")
+            print(f"      Hidden dim: {hidden_dim}")
+            print(f"      LSTM layers: {num_layers}")
+            print(f"      Attention heads: {num_attention_heads}")
+            print(f"      Bidirectional: {bidirectional}")
+            
+            # ✅ FIXED: Create model with all correct parameters
             self.model = EnhancedCNNLSTM(
-                input_dim=input_dim,
+                feature_dim=input_dim,
                 hidden_dim=hidden_dim,
                 num_classes=self.num_classes,
-                num_layers=num_layers,
-                dropout=dropout
+                num_lstm_layers=num_layers,
+                num_attention_heads=num_attention_heads,
+                dropout=dropout,
+                bidirectional=bidirectional
             ).to(self.device)
             
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -161,18 +194,19 @@ class ComprehensiveEvaluator:
             print(f"   Total parameters: {total_params:,}")
             print(f"   Epoch trained: {checkpoint.get('epoch', 'unknown')}")
             
+            # Display validation accuracy from checkpoint
             if 'best_val_acc' in checkpoint:
                 print(f"   Best Val Acc: {checkpoint['best_val_acc']:.2f}%")
-            elif 'metrics' in checkpoint:
-                metrics = checkpoint['metrics']
-                print(f"   Best Val Acc: {metrics.get('best_val_acc', 'N/A'):.2f}%")
+            elif 'metrics' in checkpoint and 'accuracy' in checkpoint['metrics']:
+                print(f"   Val Acc: {checkpoint['metrics']['accuracy']:.2f}%")
         
-        # Create data loader
+        # ✅ FIXED: Create data loader with custom collate function
         loader = DataLoader(
             dataset,
-            batch_size=16,  # Can use larger batch for features
+            batch_size=16,
             shuffle=False,
-            num_workers=0
+            num_workers=0,
+            collate_fn=collate_features  # CRITICAL: Handles variable-length sequences
         )
         
         print(f"\n{self.split.capitalize()} dataset: {len(dataset):,} samples ({len(loader)} batches)\n")
@@ -198,23 +232,26 @@ class ComprehensiveEvaluator:
         with torch.no_grad():
             with tqdm(total=len(loader), desc="Predicting") as pbar:
                 for batch in loader:
-                    # Handle different batch formats
-                    if isinstance(batch, (list, tuple)):
-                        if len(batch) == 2:
-                            features, labels = batch
-                        else:
-                            features = batch[0]
-                            labels = batch[1] if len(batch) > 1 else None
+                    # ✅ FIXED: Unpack batch from collate_features
+                    # Returns: (features, labels, lengths)
+                    if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                        features, labels, lengths = batch
+                    elif isinstance(batch, (list, tuple)) and len(batch) == 2:
+                        features, labels = batch
+                        lengths = None
                     else:
-                        features = batch
-                        labels = None
+                        print(f"Warning: Unexpected batch format: {type(batch)}")
+                        continue
                     
                     features = features.to(self.device)
                     if labels is not None:
                         labels = labels.to(self.device)
+                    if lengths is not None:
+                        lengths = lengths.to(self.device)
                     
-                    # Forward pass
-                    outputs = self.model(features)
+                    # ✅ FIXED: Forward pass with lengths parameter
+                    # Model signature: forward(self, x, lengths=None)
+                    outputs = self.model(features, lengths)
                     probs = torch.softmax(outputs, dim=1)
                     _, predicted = outputs.max(1)
                     
