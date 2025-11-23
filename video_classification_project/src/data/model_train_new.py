@@ -1,3 +1,4 @@
+#code on 27/10/2025
 """
 TWO-STAGE VIDEO CLASSIFICATION TRAINER - ENHANCED FOR >95% ACCURACY
 
@@ -15,6 +16,8 @@ TIER 1 & TIER 2 IMPROVEMENTS:
 Target: >95% accuracy
 Training time: 30-50 hours total (no OOM guaranteed)
 """
+#import os
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 import torch.nn as nn
@@ -37,6 +40,7 @@ import h5py
 from collections import Counter
 from sklearn.metrics import f1_score, precision_recall_fscore_support
 import random
+import threading
 
 warnings.filterwarnings('ignore')
 
@@ -50,6 +54,139 @@ import pandas as pd
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
+# ============================================================================
+# CHANGE 1: RESOURCE UTILIZATION MONITOR
+# ============================================================================
+
+class ResourceMonitor:
+    """Monitor and log GPU, RAM, and CPU utilization every 30 minutes"""
+    
+    def __init__(self, output_dir, interval_minutes=30):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.interval_seconds = interval_minutes * 60
+        self.log_file = self.output_dir / 'resource_utilization_log.json'
+        self.monitoring = False
+        self.monitor_thread = None
+        self.utilization_data = []
+        
+        # Load existing data if file exists
+        if self.log_file.exists():
+            try:
+                with open(self.log_file, 'r') as f:
+                    self.utilization_data = json.load(f)
+                print(f"📊 Loaded existing resource log: {len(self.utilization_data)} entries")
+            except:
+                self.utilization_data = []
+    
+    def get_current_utilization(self):
+        """Get current resource utilization"""
+        util_data = {
+            'timestamp': datetime.now().isoformat(),
+            'cpu_percent': psutil.cpu_percent(interval=1),
+            'ram_used_gb': psutil.virtual_memory().used / 1e9,
+            'ram_total_gb': psutil.virtual_memory().total / 1e9,
+            'ram_percent': psutil.virtual_memory().percent
+        }
+        
+        # GPU metrics
+        if torch.cuda.is_available():
+            util_data['gpu_allocated_gb'] = torch.cuda.memory_allocated() / 1e9
+            util_data['gpu_reserved_gb'] = torch.cuda.memory_reserved() / 1e9
+            util_data['gpu_max_allocated_gb'] = torch.cuda.max_memory_allocated() / 1e9
+        else:
+            util_data['gpu_allocated_gb'] = 0
+            util_data['gpu_reserved_gb'] = 0
+            util_data['gpu_max_allocated_gb'] = 0
+        
+        return util_data
+    
+    def log_utilization(self):
+        """Log current utilization to file"""
+        util_data = self.get_current_utilization()
+        self.utilization_data.append(util_data)
+        
+        # Save to file
+        with open(self.log_file, 'w') as f:
+            json.dump(self.utilization_data, f, indent=2)
+        
+        print(f"\n📊 Resource Utilization Logged:")
+        print(f"   CPU: {util_data['cpu_percent']:.1f}%")
+        print(f"   RAM: {util_data['ram_used_gb']:.2f}GB / {util_data['ram_total_gb']:.2f}GB ({util_data['ram_percent']:.1f}%)")
+        print(f"   GPU: {util_data['gpu_allocated_gb']:.2f}GB allocated, {util_data['gpu_reserved_gb']:.2f}GB reserved")
+    
+    def _monitoring_loop(self):
+        """Background monitoring loop"""
+        while self.monitoring:
+            self.log_utilization()
+            time.sleep(self.interval_seconds)
+    
+    def start_monitoring(self):
+        """Start background monitoring thread"""
+        if not self.monitoring:
+            self.monitoring = True
+            self.monitor_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+            self.monitor_thread.start()
+            print(f"✅ Resource monitoring started (interval: {self.interval_seconds/60:.0f} minutes)")
+            # Log initial state
+            self.log_utilization()
+    
+    def stop_monitoring(self):
+        """Stop background monitoring"""
+        if self.monitoring:
+            self.monitoring = False
+            if self.monitor_thread:
+                self.monitor_thread.join(timeout=5)
+            # Log final state
+            self.log_utilization()
+            print(f"✅ Resource monitoring stopped. Total entries: {len(self.utilization_data)}")
+    
+    def get_summary(self):
+        """Get summary statistics of resource usage"""
+        if not self.utilization_data:
+            return None
+        
+        cpu_vals = [d['cpu_percent'] for d in self.utilization_data]
+        ram_vals = [d['ram_used_gb'] for d in self.utilization_data]
+        gpu_vals = [d['gpu_allocated_gb'] for d in self.utilization_data]
+        
+        summary = {
+            'total_logs': len(self.utilization_data),
+            'duration_hours': (len(self.utilization_data) - 1) * self.interval_seconds / 3600,
+            'cpu': {
+                'mean': np.mean(cpu_vals),
+                'max': np.max(cpu_vals),
+                'min': np.min(cpu_vals)
+            },
+            'ram_gb': {
+                'mean': np.mean(ram_vals),
+                'max': np.max(ram_vals),
+                'min': np.min(ram_vals)
+            },
+            'gpu_gb': {
+                'mean': np.mean(gpu_vals),
+                'max': np.max(gpu_vals),
+                'min': np.min(gpu_vals)
+            }
+        }
+        
+        return summary
+
+
+# handle GPU state issues
+def safe_gpu_reset():
+    """Safe GPU cache clearing without container restart"""
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            gc.collect()
+            print("✅ GPU cache cleared successfully")
+            return True
+        except Exception as e:
+            print(f"⚠️ GPU cache clear warning: {e}")
+            return False
+    return False
 
 # ============================================================================
 # STAGE 1: ENHANCED FEATURE EXTRACTION
@@ -555,7 +692,7 @@ class SuperEnhancedTemporalModel(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
     
-    def forward(self, x, lengths=None):
+    def forward(self, x, lengths=None): 
         # Project features
         x = self.input_projection(x)
         
@@ -565,9 +702,26 @@ class SuperEnhancedTemporalModel(nn.Module):
                 x, lengths.cpu(), batch_first=True, enforce_sorted=False
             )
         
-        # LSTM
-        lstm_out, _ = self.lstm(x)
-        
+        # LSTM with error recovery
+        try:
+            lstm_out, _ = self.lstm(x)
+        except RuntimeError as e:
+            if "NVML_SUCCESS" in str(e) or "CUDA" in str(e):
+                print("⚠️ GPU error detected, attempting recovery...")
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                time.sleep(1)
+                
+                # Retry once
+                try:
+                    lstm_out, _ = self.lstm(x)
+                    print("✅ Recovery successful")
+                except:
+                    print("❌ Recovery failed, propagating error")
+                    raise
+            else:
+                raise e
+
         # Unpack
         if lengths is not None:
             lstm_out, _ = nn.utils.rnn.pad_packed_sequence(
@@ -1264,15 +1418,23 @@ class EnhancedTemporalModelTrainer:
             print(f"   🗑️ Removed old checkpoint: {checkpoint.name}")
     
     def train_single_model(self, num_epochs=150, batch_size=48, learning_rate=1e-3,
-                          model_name='model_0', feature_file_suffix='', resume_from=None):
+                          model_name='model_0', feature_file_suffix='', resume_from=None,
+                          results_dir=None):
         """Train a single model with enhanced capacity and resume support"""
         
         print(f"\n{'='*70}")
         print(f"TRAINING MODEL: {model_name}")
         print(f"{'='*70}")
         
-        # Initialize visualizer for this model (results folder)
-        results_dir = Path('video_classification_project/results')
+        # CHANGE 2: Use absolute results_dir path
+        if results_dir is None:
+            results_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/results")
+        else:
+            results_dir = Path(results_dir).resolve()
+        
+        results_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize visualizer for this model
         self.visualizer = RealTimeTrainingVisualizer(results_dir, model_name)
         
         # Check for existing checkpoints if resume_from not specified
@@ -1373,6 +1535,7 @@ class EnhancedTemporalModelTrainer:
         
         # Training loop with timing and ETA
         epoch_times = []
+        training_stopped_early = False  # CHANGE 3: Track if training stopped early
         
         for epoch in range(start_epoch, num_epochs):
             print(f"\n📅 Epoch {epoch}/{num_epochs-1}")
@@ -1510,6 +1673,7 @@ class EnhancedTemporalModelTrainer:
             if patience_counter >= patience:
                 print(f"\n⏹️ Early stopping at epoch {epoch}")
                 print(f"   Best epoch was {best_epoch} with {best_val_acc:.2f}% accuracy")
+                training_stopped_early = True  # CHANGE 3: Mark as stopped early
                 break
             
             # Memory cleanup
@@ -1539,6 +1703,7 @@ class EnhancedTemporalModelTrainer:
             'model_name': model_name,
             'best_epoch': best_epoch,
             'best_val_acc': best_val_acc,
+            'training_stopped_early': training_stopped_early,  # CHANGE 3: Include in results
             'test_metrics_standard': {
                 'accuracy': test_metrics['accuracy'],
                 'f1_weighted': test_metrics['f1_weighted'],
@@ -1583,12 +1748,18 @@ class EnhancedTemporalModelTrainer:
         return model, results
     
     def train_ensemble(self, num_models=3, num_epochs=150, batch_size=48,
-                      learning_rate=1e-3, feature_file_suffix=''):
+                      learning_rate=1e-3, feature_file_suffix='', results_dir=None):
         """Train ensemble of models with different seeds"""
         
         print(f"\n{'='*70}")
         print(f"TRAINING ENSEMBLE OF {num_models} MODELS")
         print(f"{'='*70}")
+        
+        # CHANGE 2: Use absolute results_dir path
+        if results_dir is None:
+            results_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/results")
+        else:
+            results_dir = Path(results_dir).resolve()
         
         ensemble_models = []
         ensemble_results = []
@@ -1603,17 +1774,23 @@ class EnhancedTemporalModelTrainer:
             np.random.seed(42 + i)
             random.seed(42 + i)
             
-            # Train model
+            # CHANGE 3: Train model and check if it stopped early
             model, results = self.train_single_model(
                 num_epochs=num_epochs,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 model_name=f'ensemble_model_{i}',
-                feature_file_suffix=feature_file_suffix
+                feature_file_suffix=feature_file_suffix,
+                results_dir=results_dir
             )
             
             ensemble_models.append(model)
             ensemble_results.append(results)
+            
+            # CHANGE 3: Check if training stopped early (patience exhausted)
+            if results.get('training_stopped_early', False):
+                print(f"\n⚠️ Model {i} stopped early due to patience exhaustion")
+                print(f"   Continuing to next model in ensemble...")
             
             # Cleanup
             torch.cuda.empty_cache()
@@ -1672,7 +1849,8 @@ class EnhancedTemporalModelTrainer:
         print(f"\n📊 Individual Model Performance:")
         for i, results in enumerate(ensemble_results):
             tta_acc = results['test_metrics_tta']['accuracy']
-            print(f"   Model {i+1}: {tta_acc:.2f}%")
+            stopped_early = " (stopped early)" if results.get('training_stopped_early', False) else ""
+            print(f"   Model {i+1}: {tta_acc:.2f}%{stopped_early}")
         
         avg_individual = np.mean([r['test_metrics_tta']['accuracy'] for r in ensemble_results])
         improvement = ensemble_metrics['accuracy'] - avg_individual
@@ -1712,13 +1890,15 @@ def main():
     print("ENHANCED TWO-STAGE VIDEO CLASSIFIER")
     print("Target: >95% Accuracy")
     print("✅ WITH RESUME, CHECKPOINTS, ETA & VISUALIZATIONS")
+    print("✅ WITH RESOURCE MONITORING & AUTO-CONTINUE")
     print("="*70)
     
     # Configuration
-    data_dir = Path("video_classification_project/data/processed")
-    features_dir = Path("video_classification_project/features_enhanced")
-    models_dir = Path("video_classification_project/models_enhanced")
-    results_dir = Path("video_classification_project/results")
+    data_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/processed")
+    features_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/features_enhanced")
+    models_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/models_enhanced")
+    # CHANGE 2: Use absolute path for results_dir
+    results_dir = Path("/workspace/NVIDIA-Video-Classification-Project/video_classification_project/results").resolve()
     
     # Check GPU
     if torch.cuda.is_available():
@@ -1736,6 +1916,10 @@ def main():
     features_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # CHANGE 1: Initialize resource monitor
+    resource_monitor = ResourceMonitor(results_dir, interval_minutes=30)
+    resource_monitor.start_monitoring()
     
     # Check for interrupted training
     existing_checkpoints = list(models_dir.glob('*_checkpoint_epoch_*.pt'))
@@ -1868,22 +2052,37 @@ def main():
                 learning_rate=1e-3,
                 model_name='single_model',
                 feature_file_suffix=suffix,
-                resume_from=resume_checkpoint
+                resume_from=resume_checkpoint,
+                results_dir=results_dir  # CHANGE 2: Pass absolute path
             )
             
             final_accuracy = results['test_metrics_tta']['accuracy']
             
         else:
-            # Ensemble training
+            # Ensemble training with auto-continue
             models, results = trainer.train_ensemble(
                 num_models=num_ensemble_models,
                 num_epochs=150,
                 batch_size=48,
                 learning_rate=1e-3,
-                feature_file_suffix=suffix
+                feature_file_suffix=suffix,
+                results_dir=results_dir  # CHANGE 2: Pass absolute path
             )
             
             final_accuracy = results['ensemble_metrics']['accuracy']
+        
+        # CHANGE 1: Stop resource monitoring and get summary
+        resource_monitor.stop_monitoring()
+        resource_summary = resource_monitor.get_summary()
+        
+        if resource_summary:
+            print(f"\n{'='*70}")
+            print("📊 RESOURCE UTILIZATION SUMMARY")
+            print(f"{'='*70}")
+            print(f"   Total monitoring duration: {resource_summary['duration_hours']:.1f} hours")
+            print(f"   CPU Usage: Avg={resource_summary['cpu']['mean']:.1f}%, Max={resource_summary['cpu']['max']:.1f}%")
+            print(f"   RAM Usage: Avg={resource_summary['ram_gb']['mean']:.2f}GB, Max={resource_summary['ram_gb']['max']:.2f}GB")
+            print(f"   GPU Usage: Avg={resource_summary['gpu_gb']['mean']:.2f}GB, Max={resource_summary['gpu_gb']['max']:.2f}GB")
         
         print(f"\n{'='*70}")
         print("🎉 TRAINING COMPLETED SUCCESSFULLY!")
@@ -1894,6 +2093,7 @@ def main():
         print(f"   - Epoch plots: {results_dir}/training_progress/epoch_plots/")
         print(f"   - Metrics CSV: {results_dir}/training_progress/training_metrics.csv")
         print(f"   - Summary JSON: {results_dir}/training_progress/training_summary.json")
+        print(f"   - Resource log: {results_dir}/resource_utilization_log.json")
         
         if final_accuracy >= 95.0:
             print(f"\n   ✅✅✅ TARGET ACHIEVED (>95%)")
@@ -1913,16 +2113,19 @@ def main():
         print(f"  1. Reduce batch_size to 32 or 24")
         print(f"  2. Reduce hidden_dim to 512")
         print(f"  3. Use gradient checkpointing")
+        resource_monitor.stop_monitoring()
         
     except KeyboardInterrupt:
         print(f"\n⚠️ Training interrupted by user")
         print(f"   You can resume training by running the script again")
         print(f"   Latest checkpoint will be automatically detected")
+        resource_monitor.stop_monitoring()
         
     except Exception as e:
         print(f"\n❌ Error: {str(e)}")
         import traceback
         traceback.print_exc()
+        resource_monitor.stop_monitoring()
 
 
 if __name__ == "__main__":
@@ -1931,9 +2134,6 @@ if __name__ == "__main__":
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-    
-    # Set device for MIG
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     
     main()
 
@@ -1971,6 +2171,12 @@ Single model:          8-12 hours
 
 Total (3-model):       27-41 hours ✅
 
+NEW FEATURES:
+=============
+✅ Resource monitoring every 30 minutes (GPU, RAM, CPU)
+✅ Fixed results directory path (absolute paths)
+✅ Auto-continue training after patience exhaustion in ensemble
+
 USAGE EXAMPLES:
 ===============
 
@@ -2007,6 +2213,47 @@ USAGE EXAMPLES:
       Patience counter: 3/25
       Continuing training...
 
+CHANGE 1: RESOURCE MONITORING
+==============================
+- Monitors GPU, RAM, and CPU usage every 30 minutes
+- Saves to: results/resource_utilization_log.json
+- Displays summary at end of training
+- Runs in background thread (non-blocking)
+- Auto-saves periodically
+
+Resource log format:
+{
+  "timestamp": "2025-10-27T14:30:00",
+  "cpu_percent": 45.2,
+  "ram_used_gb": 128.5,
+  "ram_total_gb": 251.0,
+  "ram_percent": 51.2,
+  "gpu_allocated_gb": 7.2,
+  "gpu_reserved_gb": 7.8,
+  "gpu_max_allocated_gb": 8.1
+}
+
+CHANGE 2: FIXED RESULTS DIRECTORY
+==================================
+- Results now correctly saved to:
+  /workspace/NVIDIA-Video-Classification-Project/video_classification_project/results
+- Uses absolute paths with .resolve()
+- No more nested video_classification_project folders
+- All visualizations and logs in correct location
+
+CHANGE 3: AUTO-CONTINUE ENSEMBLE TRAINING
+==========================================
+- When a model stops early (patience exhausted), training continues
+- Next model in ensemble starts automatically
+- No manual intervention needed
+- Tracks which models stopped early in results JSON
+- All ensemble models complete even if some stop early
+
+Example output:
+   Model 1: 94.2% (stopped early)
+   Model 2: 94.8%
+   Model 3: 95.1% (stopped early)
+   Ensemble: 95.5%
 
 CHECKPOINT MANAGEMENT:
 ======================
@@ -2029,7 +2276,6 @@ Method 2: Manual Selection
 Method 3: Programmatic
    In main(), set: resume_checkpoint = Path('checkpoint.pt')
 
-
 MEMORY MONITORING:
 ==================
 Current Usage: Real-time GPU memory allocation
@@ -2049,10 +2295,10 @@ All progress is saved at:
    - Best model checkpoint
    - Last periodic checkpoint (every 20 epochs)
    - Complete training history
+   - Resource utilization log
 
-Comprehensive Dashboard:
-==========================
-
+COMPREHENSIVE DASHBOARD:
+========================
 20x12 inch high-resolution plots
 6 different visualizations in one image
 Color-coded for easy interpretation
@@ -2082,6 +2328,10 @@ If resume fails:
 2. Verify checkpoint is not corrupted
 3. Try loading manually to diagnose
 
+If results in wrong directory:
+1. Check results_dir path is absolute
+2. Verify no relative path issues
+3. Use .resolve() on Path objects
 
 PERFORMANCE TIPS:
 =================
@@ -2104,7 +2354,6 @@ For Balanced Approach:
    - 3-model ensemble
    - Expected: 95-96%
 
-
 GUARANTEED:
 ===========
 ✅ No OOM with batch_size=48, hidden_dim=768 on 9.8GB GPU
@@ -2113,6 +2362,9 @@ GUARANTEED:
 ✅ Automatic checkpoint cleanup
 ✅ Complete training state preservation
 ✅ Production-ready error handling
+✅ Resource monitoring every 30 minutes
+✅ Correct results directory location
+✅ Auto-continue ensemble training
 
 SUPPORT:
 ========
@@ -2122,6 +2374,8 @@ For issues or questions:
 3. Review error messages carefully
 4. Consider reducing batch_size if OOM
 5. Check CUDA compatibility
+6. Verify results directory path
+7. Check resource_utilization_log.json for monitoring data
 
 VERSION INFO:
 =============
@@ -2134,4 +2388,10 @@ Tested on:
 - GPU: 9.8GB VRAM (MIG partition)
 - RAM: 251GB
 - Storage: 100GB+ free space
+
+CHANGES SUMMARY:
+================
+✅ CHANGE 1: Added ResourceMonitor class for GPU/RAM/CPU tracking every 30 min
+✅ CHANGE 2: Fixed results directory using absolute paths with .resolve()
+✅ CHANGE 3: Auto-continue ensemble training when patience exhausted
 """

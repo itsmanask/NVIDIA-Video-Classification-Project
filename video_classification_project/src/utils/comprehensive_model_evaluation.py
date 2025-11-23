@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import h5py
 from sklearn.metrics import (
     confusion_matrix, 
     classification_report, 
@@ -23,82 +24,277 @@ from collections import defaultdict
 import pandas as pd
 from itertools import cycle
 import sys
+import glob
 
 warnings.filterwarnings('ignore')
 
-# Add parent directory to path for imports
-current_dir = Path(__file__).parent
-project_root = current_dir.parent.parent  # Go up to video_classification_project
-data_dir = project_root / 'src' / 'data'
+# Add safe globals for PyTorch 2.6+
+torch.serialization.add_safe_globals([np.core.multiarray.scalar])
 
-# Add to Python path
-if str(data_dir) not in sys.path:
-    sys.path.insert(0, str(data_dir))
 
-# Import from your training script
-try:
-    from model_train_new import (
-        SuperEnhancedTemporalModel as EnhancedCNNLSTM,
-        EnhancedPreExtractedFeaturesDataset as MemoryEfficientVideoDataset,
-        EnhancedTemporalModelTrainer as CheckpointManager,
-        collate_features  # ✅ ADDED: Required for variable-length sequences
-    )
-    print("✓ Successfully imported from model_train_new.py")
-except (ImportError, ModuleNotFoundError) as e:
-    print(f"Error importing from model_train_new.py: {e}")
-    print(f"Looking in: {data_dir}")
-    sys.exit(1)
+class MultiscaleH5Dataset(Dataset):
+    """Dataset for multiscale features stored in H5 format"""
+    
+    def __init__(self, h5_path, split='val'):
+        self.h5_path = Path(h5_path)
+        self.split = split
+        
+        print(f"Loading features from: {self.h5_path}")
+        
+        # Open H5 file and inspect structure
+        with h5py.File(self.h5_path, 'r') as f:
+            print(f"\nH5 file structure:")
+            print(f"  Keys: {list(f.keys())}")
+            
+            # Check if features is a dataset or group
+            if 'features' in f:
+                features_obj = f['features']
+                print(f"  'features' type: {type(features_obj)}")
+                
+                if isinstance(features_obj, h5py.Dataset):
+                    # Features is a single dataset (array)
+                    print(f"  Features shape: {features_obj.shape}")
+                    self.features = features_obj[:]
+                    
+                    # Get labels
+                    if 'labels' in f:
+                        self.labels = f['labels'][:]
+                        print(f"  Labels shape: {self.labels.shape}")
+                    elif 'categories' in f:
+                        self.labels = f['categories'][:]
+                        print(f"  Categories shape: {self.labels.shape}")
+                    else:
+                        raise ValueError("No labels found in H5 file")
+                    
+                    # Get video names/paths if available
+                    if 'video_names' in f:
+                        self.video_names = [name.decode() if isinstance(name, bytes) else name 
+                                          for name in f['video_names'][:]]
+                    elif 'video_paths' in f:
+                        self.video_names = [name.decode() if isinstance(name, bytes) else name 
+                                          for name in f['video_paths'][:]]
+                    else:
+                        self.video_names = [f"video_{i}" for i in range(len(self.features))]
+                    
+                    print(f"  Number of videos: {len(self.video_names)}")
+                    
+                else:
+                    # Features is a group with nested structure
+                    raise ValueError(
+                        "Expected 'features' to be a dataset array, but got a group. "
+                        "Please check your H5 file structure."
+                    )
+            else:
+                raise ValueError(f"No 'features' key found in H5 file. Available keys: {list(f.keys())}")
+            
+            # Create category mapping from labels
+            unique_labels = sorted(set(self.labels))
+            self.num_classes = len(unique_labels)
+            
+            # If labels are already integers, use them directly
+            if all(isinstance(label, (int, np.integer)) for label in unique_labels):
+                self.category_mapping = {f"class_{i}": i for i in unique_labels}
+            else:
+                # Labels are strings/categories
+                self.category_mapping = {str(cat): idx for idx, cat in enumerate(unique_labels)}
+                # Convert labels to indices
+                cat_to_idx = {cat: idx for idx, cat in enumerate(unique_labels)}
+                self.labels = np.array([cat_to_idx[label] for label in self.labels])
+            
+            # Determine feature dimension
+            if self.features.ndim == 3:
+                # Shape: (num_videos, seq_len, feature_dim)
+                self.feature_dim = self.features.shape[-1]
+            elif self.features.ndim == 2:
+                # Shape: (num_videos, feature_dim) - single frame features
+                self.feature_dim = self.features.shape[-1]
+                # Add sequence dimension
+                self.features = self.features[:, np.newaxis, :]
+            else:
+                raise ValueError(f"Unexpected features shape: {self.features.shape}")
+        
+        print(f"\nCategory mapping:")
+        for name, idx in sorted(self.category_mapping.items(), key=lambda x: x[1]):
+            count = sum(1 for label in self.labels if label == idx)
+            print(f"   {idx}: {name} ({count} samples)")
+        
+        print(f"\nDataset info:")
+        print(f"  Total videos: {len(self.video_names)}")
+        print(f"  Features shape: {self.features.shape}")
+        print(f"  Feature dimension: {self.feature_dim}")
+        print(f"  Number of classes: {self.num_classes}")
+    
+    def __len__(self):
+        return len(self.video_names)
+    
+    def __getitem__(self, idx):
+        # Features are already loaded in memory
+        features = torch.from_numpy(self.features[idx].astype(np.float32))
+        label = int(self.labels[idx])
+        
+        return features, label
+
+
+def collate_features(batch):
+    """Collate function for variable-length sequences"""
+    features_list, labels = zip(*batch)
+    
+    # Get lengths
+    lengths = torch.tensor([f.shape[0] for f in features_list])
+    
+    # Pad sequences to max length in batch
+    max_len = lengths.max().item()
+    feature_dim = features_list[0].shape[-1]
+    
+    padded_features = torch.zeros(len(features_list), max_len, feature_dim)
+    
+    for i, features in enumerate(features_list):
+        seq_len = features.shape[0]
+        padded_features[i, :seq_len] = features
+    
+    labels = torch.tensor(labels, dtype=torch.long)
+    
+    return padded_features, labels, lengths
+
+
+class SuperEnhancedTemporalModel(nn.Module):
+    """Match the exact architecture from model_train_new.py"""
+    
+    def __init__(self, input_dim=1280, hidden_dim=768, num_classes=4, 
+                 num_lstm_layers=4, dropout=0.4, num_attention_heads=12,
+                 intermediate_dim=512, bidirectional=True):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_lstm_layers
+        self.bidirectional = bidirectional
+        
+        # Input projection (not feature_proj)
+        self.input_projection = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        
+        # Bidirectional LSTM
+        self.lstm = nn.LSTM(
+            hidden_dim,
+            hidden_dim,
+            num_lstm_layers,
+            batch_first=True,
+            dropout=dropout if num_lstm_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        
+        # Multi-head attention
+        lstm_output_dim = hidden_dim * 2 if bidirectional else hidden_dim
+        self.attention = nn.MultiheadAttention(
+            lstm_output_dim,
+            num_attention_heads,
+            dropout=dropout,
+            batch_first=True
+        )
+        
+        self.attention_norm = nn.LayerNorm(lstm_output_dim)
+        
+        # Attention-based pooling (match training code exactly)
+        self.attention_pooling = nn.Sequential(
+            nn.Linear(lstm_output_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.Tanh(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1)
+        )
+        
+        # Enhanced classifier with multiple layers
+        self.classifier = nn.Sequential(
+            nn.Linear(lstm_output_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, intermediate_dim),
+            nn.LayerNorm(intermediate_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(intermediate_dim, intermediate_dim // 2),
+            nn.LayerNorm(intermediate_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(intermediate_dim // 2, num_classes)
+        )
+    
+    def forward(self, x, lengths=None):
+        batch_size, seq_len, _ = x.shape
+        device = x.device  # Store device before packing
+        
+        # Project input
+        x = self.input_projection(x)
+        
+        # Pack sequence if lengths provided
+        if lengths is not None:
+            x = nn.utils.rnn.pack_padded_sequence(
+                x, lengths.cpu(), batch_first=True, enforce_sorted=False
+            )
+        
+        # LSTM
+        lstm_out, _ = self.lstm(x)
+        
+        # Unpack if needed
+        if lengths is not None:
+            lstm_out, _ = nn.utils.rnn.pad_packed_sequence(
+                lstm_out, batch_first=True
+            )
+        
+        # Self-attention
+        attn_out, _ = self.attention(lstm_out, lstm_out, lstm_out)
+        attn_out = self.attention_norm(attn_out + lstm_out)  # Residual connection
+        
+        # Attention-based pooling
+        attention_weights = self.attention_pooling(attn_out)
+        
+        if lengths is not None:
+            # Create mask using the stored device
+            mask = torch.arange(seq_len, device=device)[None, :] < lengths[:, None]
+            attention_weights = attention_weights.masked_fill(~mask.unsqueeze(-1), float('-inf'))
+        
+        attention_weights = torch.softmax(attention_weights, dim=1)
+        pooled = (attn_out * attention_weights).sum(1)
+        
+        # Classify
+        output = self.classifier(pooled)
+        
+        return output
 
 
 class ComprehensiveEvaluator:
-    """Combined model evaluation and data visualization"""
+    """Model evaluation with H5 features support"""
     
-    def __init__(self, checkpoint_path, data_dir, output_dir=None, device='cuda', split='val'):
-        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
-        self.data_dir = Path(data_dir)
-        
-        # Default output directory structure
-        if output_dir is None:
-            self.output_dir = Path('video_classification_project/results')
-        else:
-            self.output_dir = Path(output_dir)
+    def __init__(self, checkpoint_path, h5_path, output_dir, device='cuda'):
+        self.checkpoint_path = Path(checkpoint_path)
+        self.h5_path = Path(h5_path)
+        self.output_dir = Path(output_dir)
         
         # Create subdirectories
         self.eval_dir = self.output_dir / 'evaluation'
         self.viz_dir = self.output_dir / 'visualizations'
-        self.pred_dir = self.output_dir / 'predictions'
-        self.data_viz_dir = self.output_dir / 'data_samples'
         
-        for directory in [self.eval_dir, self.viz_dir, self.pred_dir, self.data_viz_dir]:
+        for directory in [self.eval_dir, self.viz_dir]:
             directory.mkdir(parents=True, exist_ok=True)
         
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
-        self.split = split
         self.model = None
         self.category_mapping = None
         self.class_names = None
         self.num_classes = None
         
-        # ImageNet mean and std for denormalization
-        self.mean = np.array([0.485, 0.456, 0.406])
-        self.std = np.array([0.229, 0.224, 0.225])
-        
         print(f"{'='*80}")
-        print(f"COMPREHENSIVE MODEL EVALUATION & VISUALIZATION")
+        print(f"COMPREHENSIVE MODEL EVALUATION")
         print(f"{'='*80}")
         print(f"Checkpoint: {checkpoint_path}")
-        print(f"Data Directory: {data_dir}")
+        print(f"H5 Features: {h5_path}")
         print(f"Output Directory: {self.output_dir}")
-        print(f"Split: {split}")
         print(f"Device: {self.device}")
         print(f"{'='*80}\n")
-    
-    def denormalize_frame(self, tensor):
-        """Convert normalized tensor back to displayable image"""
-        img = tensor.cpu().numpy().transpose(1, 2, 0)
-        img = img * self.std + self.mean
-        img = np.clip(img, 0, 1)
-        return img
     
     def load_model_and_data(self):
         """Load trained model and dataset"""
@@ -107,109 +303,87 @@ class ComprehensiveEvaluator:
         print(f"{'='*60}\n")
         
         # Load checkpoint
-        if self.checkpoint_path and self.checkpoint_path.exists():
-            print(f"Loading checkpoint...")
-            checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-        else:
-            print("No checkpoint provided - skipping model loading")
-            checkpoint = None
+        print(f"Loading checkpoint: {self.checkpoint_path}")
+        try:
+            checkpoint = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
+            print("✓ Checkpoint loaded successfully")
+        except Exception as e:
+            raise RuntimeError(f"Error loading checkpoint: {e}")
         
-        # Create dataset - this uses pre-extracted features in HDF5 format
-        print(f"Loading {self.split} dataset...")
-        
-        # ✅ FIXED: Look for HDF5 feature files (not split directories)
-        feature_file = self.data_dir / f'{self.split}_features.h5'
-        if not feature_file.exists():
-            # Try multiscale version
-            feature_file = self.data_dir / f'{self.split}_features_multiscale.h5'
-        
-        if not feature_file.exists():
-            raise ValueError(
-                f"Feature file not found!\n"
-                f"Expected: {self.data_dir / f'{self.split}_features.h5'}\n"
-                f"Or: {self.data_dir / f'{self.split}_features_multiscale.h5'}\n"
-                f"Please run feature extraction first (Stage 1 of training)."
-            )
-        
-        # ✅ FIXED: Use correct dataset class with HDF5 file
-        dataset = MemoryEfficientVideoDataset(
-            feature_file=feature_file,
-            augment=False
-        )
+        # Create dataset
+        print(f"\nLoading dataset from H5...")
+        dataset = MultiscaleH5Dataset(self.h5_path)
         
         if len(dataset) == 0:
-            raise ValueError(f"{self.split} dataset is empty!")
+            raise ValueError(f"Dataset is empty!")
         
-        # Get category mapping and feature dimension from dataset
+        # Get metadata
         self.category_mapping = dataset.category_mapping
         self.num_classes = len(self.category_mapping)
-        self.feature_dim = dataset.feature_dim  # ✅ ADDED: Get from dataset
-        self.class_names = [None] * self.num_classes
+        self.feature_dim = dataset.feature_dim
         
+        self.class_names = [None] * self.num_classes
         for name, idx in self.category_mapping.items():
             self.class_names[idx] = name
         
-        print(f"\nCategories ({self.num_classes}):")
-        for idx, name in enumerate(self.class_names):
-            print(f"   {idx}: {name}")
+        # Initialize model
+        print(f"\nInitializing model...")
         
-        # Initialize model if checkpoint exists
-        if checkpoint:
-            print(f"\nInitializing model...")
-            
-            # ✅ FIXED: Get model configuration from checkpoint
-            # Training saves as 'model_config', fallback to 'config' for compatibility
-            config = checkpoint.get('model_config', checkpoint.get('config', {}))
-            
-            # ✅ FIXED: Use feature_dim from config or dataset (they should match)
-            input_dim = config.get('feature_dim', self.feature_dim)
-            hidden_dim = config.get('hidden_dim', 768)
-            num_layers = config.get('num_lstm_layers', 4)
-            num_attention_heads = config.get('num_attention_heads', 12)
-            dropout = config.get('dropout', 0.4)
-            bidirectional = config.get('bidirectional', True)
-            
-            print(f"   Model config from checkpoint:")
-            print(f"      Feature dim: {input_dim}")
-            print(f"      Hidden dim: {hidden_dim}")
-            print(f"      LSTM layers: {num_layers}")
-            print(f"      Attention heads: {num_attention_heads}")
-            print(f"      Bidirectional: {bidirectional}")
-            
-            # ✅ FIXED: Create model with all correct parameters
-            self.model = EnhancedCNNLSTM(
-                feature_dim=input_dim,
-                hidden_dim=hidden_dim,
-                num_classes=self.num_classes,
-                num_lstm_layers=num_layers,
-                num_attention_heads=num_attention_heads,
-                dropout=dropout,
-                bidirectional=bidirectional
-            ).to(self.device)
-            
+        # Get config from checkpoint
+        config = checkpoint.get('model_config', checkpoint.get('config', {}))
+        
+        input_dim = config.get('input_dim', config.get('feature_dim', self.feature_dim))
+        hidden_dim = config.get('hidden_dim', 768)
+        num_layers = config.get('num_lstm_layers', 4)
+        num_attention_heads = config.get('num_attention_heads', 12)
+        dropout = config.get('dropout', 0.4)
+        bidirectional = config.get('bidirectional', True)
+        intermediate_dim = config.get('intermediate_dim', 512)
+        
+        print(f"   Input dim: {input_dim}")
+        print(f"   Hidden dim: {hidden_dim}")
+        print(f"   LSTM layers: {num_layers}")
+        print(f"   Attention heads: {num_attention_heads}")
+        print(f"   Intermediate dim: {intermediate_dim}")
+        
+        # Create model with correct architecture
+        self.model = SuperEnhancedTemporalModel(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            num_classes=self.num_classes,
+            num_lstm_layers=num_layers,
+            num_attention_heads=num_attention_heads,
+            dropout=dropout,
+            bidirectional=bidirectional,
+            intermediate_dim=intermediate_dim
+        ).to(self.device)
+        
+        # Load state dict
+        try:
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.model.eval()
+            print("✓ Model weights loaded successfully")
             
             total_params = sum(p.numel() for p in self.model.parameters())
             print(f"   Total parameters: {total_params:,}")
-            print(f"   Epoch trained: {checkpoint.get('epoch', 'unknown')}")
             
-            # Display validation accuracy from checkpoint
             if 'best_val_acc' in checkpoint:
                 print(f"   Best Val Acc: {checkpoint['best_val_acc']:.2f}%")
-            elif 'metrics' in checkpoint and 'accuracy' in checkpoint['metrics']:
-                print(f"   Val Acc: {checkpoint['metrics']['accuracy']:.2f}%")
+            elif 'val_acc' in checkpoint:
+                print(f"   Val Acc: {checkpoint['val_acc']:.2f}%")
+        except Exception as e:
+            raise RuntimeError(f"Error loading model weights: {e}")
         
-        # ✅ FIXED: Create data loader with custom collate function
+        # Create data loader
         loader = DataLoader(
             dataset,
             batch_size=16,
             shuffle=False,
             num_workers=0,
-            collate_fn=collate_features  # CRITICAL: Handles variable-length sequences
+            collate_fn=collate_features
         )
         
-        print(f"\n{self.split.capitalize()} dataset: {len(dataset):,} samples ({len(loader)} batches)\n")
+        print(f"\nDataset: {len(dataset):,} samples\n")
         
         return dataset, loader
     
@@ -218,10 +392,6 @@ class ComprehensiveEvaluator:
         print(f"{'='*60}")
         print(f"GENERATING PREDICTIONS")
         print(f"{'='*60}\n")
-        
-        if self.model is None:
-            print("Model not loaded. Skipping predictions.")
-            return None, None, None
         
         all_preds = []
         all_labels = []
@@ -232,47 +402,30 @@ class ComprehensiveEvaluator:
         with torch.no_grad():
             with tqdm(total=len(loader), desc="Predicting") as pbar:
                 for batch in loader:
-                    # ✅ FIXED: Unpack batch from collate_features
-                    # Returns: (features, labels, lengths)
-                    if isinstance(batch, (list, tuple)) and len(batch) == 3:
-                        features, labels, lengths = batch
-                    elif isinstance(batch, (list, tuple)) and len(batch) == 2:
-                        features, labels = batch
-                        lengths = None
-                    else:
-                        print(f"Warning: Unexpected batch format: {type(batch)}")
-                        continue
+                    features, labels, lengths = batch
                     
                     features = features.to(self.device)
-                    if labels is not None:
-                        labels = labels.to(self.device)
-                    if lengths is not None:
-                        lengths = lengths.to(self.device)
+                    labels = labels.to(self.device)
+                    lengths = lengths.to(self.device)
                     
-                    # ✅ FIXED: Forward pass with lengths parameter
-                    # Model signature: forward(self, x, lengths=None)
+                    # Forward pass
                     outputs = self.model(features, lengths)
                     probs = torch.softmax(outputs, dim=1)
                     _, predicted = outputs.max(1)
                     
                     all_preds.extend(predicted.cpu().numpy())
-                    if labels is not None:
-                        all_labels.extend(labels.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
                     all_probs.extend(probs.cpu().numpy())
                     
                     pbar.update(1)
         
         all_preds = np.array(all_preds)
-        all_labels = np.array(all_labels) if all_labels else None
+        all_labels = np.array(all_labels)
         all_probs = np.array(all_probs)
         
         print(f"Total predictions: {len(all_preds):,}\n")
         
         return all_preds, all_labels, all_probs
-    
-    # ===========================
-    # EVALUATION VISUALIZATIONS
-    # ===========================
     
     def plot_confusion_matrix(self, y_true, y_pred, normalize=False):
         """Plot confusion matrix"""
@@ -306,9 +459,9 @@ class ComprehensiveEvaluator:
         plt.yticks(rotation=0)
         plt.tight_layout()
         
-        save_path = self.eval_dir / filename
+        save_path = self.viz_dir / filename
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: {filename}")
+        print(f"✓ Saved: {filename}")
         plt.close()
     
     def plot_per_category_metrics(self, y_true, y_pred):
@@ -323,9 +476,7 @@ class ComprehensiveEvaluator:
             'Recall': recall,
             'F1-Score': f1,
             'Support': support
-        })
-        
-        metrics_df = metrics_df.sort_values('F1-Score', ascending=True)
+        }).sort_values('F1-Score', ascending=True)
         
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
         
@@ -365,851 +516,515 @@ class ComprehensiveEvaluator:
         axes[1, 1].set_title('Support per Category', fontweight='bold')
         axes[1, 1].grid(axis='x', alpha=0.3)
         
-        # Add value labels
-        for ax in axes.flat[:3]:
-            for container in ax.containers:
-                ax.bar_label(container, fmt='%.3f', padding=3)
-        
-        for container in axes[1, 1].containers:
-            axes[1, 1].bar_label(container, fmt='%d', padding=3)
-        
-        plt.suptitle('Per-Category Performance Metrics', fontsize=18, fontweight='bold', y=0.995)
+        plt.suptitle('Per-Category Performance Metrics', fontsize=18, fontweight='bold')
         plt.tight_layout()
         
-        save_path = self.eval_dir / 'per_category_metrics.png'
+        save_path = self.viz_dir / 'per_category_metrics.png'
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: per_category_metrics.png")
+        print(f"✓ Saved: per_category_metrics.png")
         plt.close()
         
         return metrics_df
     
     def plot_roc_curves(self, y_true, y_probs):
-        """Plot ROC curves for each category"""
+        """Plot ROC curves"""
         y_true_bin = label_binarize(y_true, classes=range(self.num_classes))
         
-        fpr = dict()
-        tpr = dict()
-        roc_auc = dict()
+        fpr = {}
+        tpr = {}
+        roc_auc = {}
         
         for i in range(self.num_classes):
             fpr[i], tpr[i], _ = roc_curve(y_true_bin[:, i], y_probs[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
         
         plt.figure(figsize=(12, 10))
-        
-        colors = cycle(['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray'])
+        colors = cycle(['blue', 'red', 'green', 'orange', 'purple', 'brown'])
         
         for i, color in zip(range(self.num_classes), colors):
-            plt.plot(
-                fpr[i], tpr[i], color=color, lw=2,
-                label=f'{self.class_names[i]} (AUC = {roc_auc[i]:.3f})'
-            )
+            plt.plot(fpr[i], tpr[i], color=color, lw=2,
+                    label=f'{self.class_names[i]} (AUC = {roc_auc[i]:.3f})')
         
-        plt.plot([0, 1], [0, 1], 'k--', lw=2, label='Random Classifier')
-        
+        plt.plot([0, 1], [0, 1], 'k--', lw=2, label='Random')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate', fontsize=12, fontweight='bold')
         plt.ylabel('True Positive Rate', fontsize=12, fontweight='bold')
-        plt.title('ROC Curves - Multi-Class Classification', fontsize=16, fontweight='bold')
-        plt.legend(loc="lower right", fontsize=10)
+        plt.title('ROC Curves', fontsize=16, fontweight='bold')
+        plt.legend(loc="lower right")
         plt.grid(alpha=0.3)
         plt.tight_layout()
         
-        save_path = self.eval_dir / 'roc_curves.png'
+        save_path = self.viz_dir / 'roc_curves.png'
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: roc_curves.png")
+        print(f"✓ Saved: roc_curves.png")
         plt.close()
         
         return roc_auc
     
-    def plot_prediction_distribution(self, y_true, y_pred):
-        """Plot prediction distribution and error analysis"""
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-        
-        true_counts = np.bincount(y_true, minlength=self.num_classes)
-        pred_counts = np.bincount(y_pred, minlength=self.num_classes)
-        
-        x = np.arange(self.num_classes)
-        width = 0.35
-        
-        axes[0].bar(x - width/2, true_counts, width, label='True', color='steelblue', alpha=0.8)
-        axes[0].bar(x + width/2, pred_counts, width, label='Predicted', color='coral', alpha=0.8)
-        axes[0].set_xlabel('Category', fontweight='bold')
-        axes[0].set_ylabel('Count', fontweight='bold')
-        axes[0].set_title('True vs Predicted Distribution', fontweight='bold', fontsize=14)
-        axes[0].set_xticks(x)
-        axes[0].set_xticklabels(self.class_names, rotation=45, ha='right')
-        axes[0].legend()
-        axes[0].grid(axis='y', alpha=0.3)
-        
-        errors = (y_true != y_pred).astype(int)
-        error_by_class = np.array([errors[y_true == i].sum() for i in range(self.num_classes)])
-        total_by_class = np.array([(y_true == i).sum() for i in range(self.num_classes)])
-        error_rate = error_by_class / (total_by_class + 1e-10) * 100
-        
-        bars = axes[1].bar(self.class_names, error_rate, color='crimson', alpha=0.7)
-        axes[1].set_xlabel('Category', fontweight='bold')
-        axes[1].set_ylabel('Error Rate (%)', fontweight='bold')
-        axes[1].set_title('Error Rate per Category', fontweight='bold', fontsize=14)
-        axes[1].set_xticklabels(self.class_names, rotation=45, ha='right')
-        axes[1].grid(axis='y', alpha=0.3)
-        
-        for bar in bars:
-            height = bar.get_height()
-            axes[1].text(bar.get_x() + bar.get_width()/2., height,
-                        f'{height:.1f}%', ha='center', va='bottom', fontweight='bold')
-        
-        plt.tight_layout()
-        
-        save_path = self.eval_dir / 'prediction_distribution.png'
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: prediction_distribution.png")
-        plt.close()
-    
-    def plot_confidence_analysis(self, y_true, y_pred, y_probs):
-        """Analyze prediction confidence"""
-        confidence = np.max(y_probs, axis=1)
-        correct = (y_true == y_pred)
-        
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        
-        # Confidence distribution
-        axes[0, 0].hist(confidence[correct], bins=50, alpha=0.7, label='Correct', color='green', edgecolor='black')
-        axes[0, 0].hist(confidence[~correct], bins=50, alpha=0.7, label='Incorrect', color='red', edgecolor='black')
-        axes[0, 0].set_xlabel('Confidence', fontweight='bold')
-        axes[0, 0].set_ylabel('Count', fontweight='bold')
-        axes[0, 0].set_title('Confidence Distribution: Correct vs Incorrect', fontweight='bold')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-        
-        # Calibration
-        bins = np.linspace(0, 1, 11)
-        bin_centers = (bins[:-1] + bins[1:]) / 2
-        bin_accuracies = []
-        
-        for i in range(len(bins)-1):
-            mask = (confidence >= bins[i]) & (confidence < bins[i+1])
-            if mask.sum() > 0:
-                bin_accuracies.append(correct[mask].mean())
-            else:
-                bin_accuracies.append(0)
-        
-        axes[0, 1].bar(bin_centers, bin_accuracies, width=0.08, color='steelblue', alpha=0.7, edgecolor='black')
-        axes[0, 1].plot([0, 1], [0, 1], 'r--', lw=2, label='Perfect Calibration')
-        axes[0, 1].set_xlabel('Confidence Bin', fontweight='bold')
-        axes[0, 1].set_ylabel('Accuracy', fontweight='bold')
-        axes[0, 1].set_title('Calibration: Accuracy vs Confidence', fontweight='bold')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-        axes[0, 1].set_ylim([0, 1])
-        
-        # Confidence per category
-        category_confidence = []
-        for i in range(self.num_classes):
-            mask = y_true == i
-            if mask.sum() > 0:
-                category_confidence.append(confidence[mask].mean())
-            else:
-                category_confidence.append(0)
-        
-        bars = axes[1, 0].bar(self.class_names, category_confidence, color='teal', alpha=0.7, edgecolor='black')
-        axes[1, 0].set_xlabel('Category', fontweight='bold')
-        axes[1, 0].set_ylabel('Average Confidence', fontweight='bold')
-        axes[1, 0].set_title('Average Confidence per Category', fontweight='bold')
-        axes[1, 0].set_xticklabels(self.class_names, rotation=45, ha='right')
-        axes[1, 0].grid(axis='y', alpha=0.3)
-        axes[1, 0].set_ylim([0, 1])
-        
-        for bar in bars:
-            height = bar.get_height()
-            axes[1, 0].text(bar.get_x() + bar.get_width()/2., height,
-                           f'{height:.3f}', ha='center', va='bottom', fontweight='bold')
-        
-        # Decision margin
-        top2_probs = np.sort(y_probs, axis=1)[:, -2:]
-        confidence_gap = top2_probs[:, 1] - top2_probs[:, 0]
-        
-        axes[1, 1].hist(confidence_gap[correct], bins=50, alpha=0.7, label='Correct', color='green', edgecolor='black')
-        axes[1, 1].hist(confidence_gap[~correct], bins=50, alpha=0.7, label='Incorrect', color='red', edgecolor='black')
-        axes[1, 1].set_xlabel('Confidence Gap (Top-1 - Top-2)', fontweight='bold')
-        axes[1, 1].set_ylabel('Count', fontweight='bold')
-        axes[1, 1].set_title('Decision Margin: Correct vs Incorrect', fontweight='bold')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-        
-        plt.tight_layout()
-        
-        save_path = self.eval_dir / 'confidence_analysis.png'
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: confidence_analysis.png")
-        plt.close()
-    
-    # ===========================
-    # DATA VISUALIZATIONS
-    # ===========================
-    
-    def create_dataset_overview(self):
-        """Create comprehensive dataset overview"""
-        print(f"\n{'='*60}")
-        print(f"CREATING DATASET OVERVIEW")
-        print(f"{'='*60}\n")
-        
-        stats = {'train': {}, 'val': {}, 'test': {}}
-        
-        for split in ['train', 'val', 'test']:
-            split_dir = self.data_dir / split
-            if not split_dir.exists():
-                continue
-            
-            print(f"Scanning {split} split...")
-            
-            # Look for .pt feature files
-            feature_files = list(split_dir.glob("**/*.pt"))
-            
-            for feature_file in feature_files:
-                try:
-                    # Extract category from path or filename
-                    # Assuming structure: data_dir/split/category/file.pt
-                    parts = feature_file.relative_to(split_dir).parts
-                    if len(parts) >= 2:
-                        category_name = parts[0]
-                    else:
-                        category_name = "unknown"
-                    
-                    if category_name not in stats[split]:
-                        stats[split][category_name] = 0
-                    
-                    # Count as 1 sample per feature file
-                    stats[split][category_name] += 1
-                    
-                except Exception as e:
-                    continue
-        
-        # If no data found, skip visualization
-        if not any(stats.values()):
-            print("No feature data found. Skipping dataset overview.")
-            print("Note: This visualization expects pre-extracted features in .pt files")
-            return
-        
-        # Create visualization
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        
-        # Category distribution per split
-        ax = axes[0, 0]
-        all_categories = set()
-        for split_stats in stats.values():
-            all_categories.update(split_stats.keys())
-        all_categories = sorted(list(all_categories))
-        
-        x = np.arange(len(all_categories))
-        width = 0.25
-        
-        for i, split in enumerate(['train', 'val', 'test']):
-            counts = [stats[split].get(cat, 0) for cat in all_categories]
-            ax.bar(x + i*width, counts, width, label=split.capitalize(), alpha=0.8)
-        
-        ax.set_xlabel('Category', fontweight='bold')
-        ax.set_ylabel('Number of Samples', fontweight='bold')
-        ax.set_title('Samples per Category by Split', fontweight='bold', fontsize=14)
-        ax.set_xticks(x + width)
-        ax.set_xticklabels(all_categories, rotation=45, ha='right')
-        ax.legend()
-        ax.grid(axis='y', alpha=0.3)
-        
-        # Total samples per split
-        ax = axes[0, 1]
-        split_totals = {split: sum(stats[split].values()) for split in ['train', 'val', 'test']}
-        split_totals = {k: v for k, v in split_totals.items() if v > 0}  # Remove empty splits
-        
-        if split_totals:
-            colors = ['#3b82f6', '#8b5cf6', '#ec4899'][:len(split_totals)]
-            wedges, texts, autotexts = ax.pie(
-                split_totals.values(), 
-                labels=[f'{k.capitalize()}\n{v}' for k, v in split_totals.items()],
-                autopct='%1.1f%%',
-                colors=colors,
-                startangle=90
-            )
-            ax.set_title('Dataset Split Distribution', fontweight='bold', fontsize=14)
-        
-        # Category proportions
-        ax = axes[1, 0]
-        category_totals = {}
-        for split_stats in stats.values():
-            for cat, count in split_stats.items():
-                category_totals[cat] = category_totals.get(cat, 0) + count
-        
-        if category_totals:
-            colors_cat = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24']
-            ax.barh(list(category_totals.keys()), list(category_totals.values()), 
-                   color=colors_cat, alpha=0.8, edgecolor='black')
-            ax.set_xlabel('Total Samples', fontweight='bold')
-            ax.set_title('Total Samples per Category', fontweight='bold', fontsize=14)
-            ax.grid(axis='x', alpha=0.3)
-        
-        # Statistics table
-        ax = axes[1, 1]
-        ax.axis('off')
-        
-        total_samples = sum(split_totals.values())
-        
-        stats_text = [
-            ["Metric", "Value"],
-            ["─" * 30, "─" * 15],
-            ["Total Samples", f"{total_samples:,}"],
-            ["Categories", f"{len(all_categories)}"],
-            ["Training Samples", f"{split_totals.get('train', 0):,}"],
-            ["Validation Samples", f"{split_totals.get('val', 0):,}"],
-            ["Test Samples", f"{split_totals.get('test', 0):,}"],
-            ["Data Type", "Pre-extracted Features"],
-            ["Feature Dim", "2048 (ResNet50)"]
-        ]
-        
-        table = ax.table(cellText=stats_text, loc='center', cellLoc='left',
-                        colWidths=[0.6, 0.4])
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 2)
-        
-        for i in range(2):
-            table[(0, i)].set_facecolor('#374151')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-        
-        for i in range(2, len(stats_text)):
-            for j in range(2):
-                if i % 2 == 0:
-                    table[(i, j)].set_facecolor('#f3f4f6')
-        
-        ax.set_title('Dataset Statistics', fontweight='bold', fontsize=14, pad=20)
-        
-        plt.tight_layout()
-        save_path = self.viz_dir / 'dataset_overview.png'
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Saved: dataset_overview.png\n")
-        
-        # Print text summary
-        print(f"{'='*60}")
-        print(f"DATASET SUMMARY")
-        print(f"{'='*60}")
-        for row in stats_text[2:]:
-            print(f"  {row[0]:<25} {row[1]:>15}")
-        
-        # Category distribution per split
-        ax = axes[0, 0]
-        all_categories = set()
-        for split_stats in stats.values():
-            all_categories.update(split_stats.keys())
-        all_categories = sorted(list(all_categories))
-        
-        x = np.arange(len(all_categories))
-        width = 0.25
-        
-        for i, split in enumerate(['train', 'val', 'test']):
-            counts = [stats[split].get(cat, 0) for cat in all_categories]
-            ax.bar(x + i*width, counts, width, label=split.capitalize(), alpha=0.8)
-        
-        ax.set_xlabel('Category', fontweight='bold')
-        ax.set_ylabel('Number of Videos', fontweight='bold')
-        ax.set_title('Videos per Category by Split', fontweight='bold', fontsize=14)
-        ax.set_xticks(x + width)
-        ax.set_xticklabels(all_categories, rotation=45, ha='right')
-        ax.legend()
-        ax.grid(axis='y', alpha=0.3)
-        
-        # Total videos per split
-        ax = axes[0, 1]
-        split_totals = {split: sum(stats[split].values()) for split in ['train', 'val', 'test']}
-        colors = ['#3b82f6', '#8b5cf6', '#ec4899']
-        wedges, texts, autotexts = ax.pie(
-            split_totals.values(), 
-            labels=[f'{k.capitalize()}\n{v}' for k, v in split_totals.items()],
-            autopct='%1.1f%%',
-            colors=colors,
-            startangle=90
-        )
-        ax.set_title('Dataset Split Distribution', fontweight='bold', fontsize=14)
-        
-        # Category proportions
-        ax = axes[1, 0]
-        category_totals = {}
-        for split_stats in stats.values():
-            for cat, count in split_stats.items():
-                category_totals[cat] = category_totals.get(cat, 0) + count
-        
-        if category_totals:
-            colors_cat = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24']
-            ax.barh(list(category_totals.keys()), list(category_totals.values()), 
-                   color=colors_cat, alpha=0.8, edgecolor='black')
-            ax.set_xlabel('Total Videos', fontweight='bold')
-            ax.set_title('Total Videos per Category', fontweight='bold', fontsize=14)
-            ax.grid(axis='x', alpha=0.3)
-        
-        # Statistics table
-        ax = axes[1, 1]
-        ax.axis('off')
-        
-        total_videos = sum(split_totals.values())
-        total_frames = total_videos * 32
-        
-        stats_text = [
-            ["Metric", "Value"],
-            ["─" * 30, "─" * 15],
-            ["Total Videos", f"{total_videos:,}"],
-            ["Total Frames", f"{total_frames:,}"],
-            ["Categories", f"{len(all_categories)}"],
-            ["Training Videos", f"{split_totals.get('train', 0):,}"],
-            ["Validation Videos", f"{split_totals.get('val', 0):,}"],
-            ["Test Videos", f"{split_totals.get('test', 0):,}"],
-            ["Frames per Video", "32"],
-            ["Frame Size", "224 × 224"],
-            ["Normalization", "ImageNet"]
-        ]
-        
-        table = ax.table(cellText=stats_text, loc='center', cellLoc='left',
-                        colWidths=[0.6, 0.4])
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 2)
-        
-        for i in range(2):
-            table[(0, i)].set_facecolor('#374151')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-        
-        for i in range(2, len(stats_text)):
-            for j in range(2):
-                if i % 2 == 0:
-                    table[(i, j)].set_facecolor('#f3f4f6')
-        
-        ax.set_title('Dataset Statistics', fontweight='bold', fontsize=14, pad=20)
-        
-        plt.tight_layout()
-        save_path = self.viz_dir / 'dataset_overview.png'
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Saved: dataset_overview.png\n")
-        
-        # Print text summary
-        print(f"{'='*60}")
-        print(f"DATASET SUMMARY")
-        print(f"{'='*60}")
-        for row in stats_text[2:]:
-            print(f"  {row[0]:<25} {row[1]:>15}")
-        print()
-    
-    def visualize_sample_videos(self, split='train', samples_per_category=2):
-        """Visualize sample videos from each category"""
-        print(f"{'='*60}")
-        print(f"NOTE: Video frame visualization skipped")
-        print(f"      (Model uses pre-extracted features, not raw frames)")
-        print(f"{'='*60}\n")
-        return
-        
-        # Original visualization code commented out since we use features
-        # This would require access to original video files
-    
-    def visualize_predictions_on_samples(self, dataset, num_samples=10):
-        """Visualize model predictions on sample videos"""
-        if self.model is None:
-            print("Model not loaded. Skipping prediction visualization.")
-            return
-        
-        print(f"{'='*60}")
-        print(f"NOTE: Visual prediction display skipped")
-        print(f"      (Model uses pre-extracted features)")
-        print(f"      Predictions are shown in evaluation metrics.")
-        print(f"{'='*60}\n")
-        return
-    
-    def plot_prediction_with_frames(self, video, true_label, pred_label, probs, filename):
-        """Plot video frames with prediction probabilities"""
-        # Skipped - model uses features not frames
-        pass
-    
-    def create_frame_montage(self, video_tensor, cols=8):
-        """Create a montage of video frames"""
-        # Skipped - model uses features not frames
-        pass
-    
-    # ===========================
-    # REPORTS
-    # ===========================
-    
-    def generate_detailed_report(self, y_true, y_pred, y_probs, metrics_df, roc_auc):
-        """Generate comprehensive text report"""
+    def generate_report(self, y_true, y_pred, y_probs, metrics_df, roc_auc):
+        """Generate comprehensive report"""
         report = []
         report.append("="*80)
-        report.append("COMPREHENSIVE MODEL EVALUATION REPORT")
+        report.append("MODEL EVALUATION REPORT")
         report.append("="*80)
         report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         report.append(f"Checkpoint: {self.checkpoint_path}")
+        report.append(f"H5 File: {self.h5_path}")
         report.append("")
         
         # Overall metrics
         accuracy = accuracy_score(y_true, y_pred)
-        macro_precision = metrics_df['Precision'].mean()
-        macro_recall = metrics_df['Recall'].mean()
-        macro_f1 = metrics_df['F1-Score'].mean()
-        
         report.append("OVERALL PERFORMANCE")
         report.append("-"*80)
-        report.append(f"Overall Accuracy: {accuracy*100:.2f}%")
-        report.append(f"Macro Precision:  {macro_precision:.4f}")
-        report.append(f"Macro Recall:     {macro_recall:.4f}")
-        report.append(f"Macro F1-Score:   {macro_f1:.4f}")
+        report.append(f"Accuracy: {accuracy*100:.2f}%")
+        report.append(f"Macro Precision: {metrics_df['Precision'].mean():.4f}")
+        report.append(f"Macro Recall: {metrics_df['Recall'].mean():.4f}")
+        report.append(f"Macro F1-Score: {metrics_df['F1-Score'].mean():.4f}")
         report.append("")
         
-        # Per-category performance
+        # Per-category
         report.append("PER-CATEGORY PERFORMANCE")
         report.append("-"*80)
-        report.append(f"{'Category':<30} {'Precision':>10} {'Recall':>10} {'F1-Score':>10} {'Support':>10}")
+        report.append(f"{'Category':<20} {'Precision':>10} {'Recall':>10} {'F1':>10} {'Support':>10}")
         report.append("-"*80)
         
         for _, row in metrics_df.iterrows():
             report.append(
-                f"{row['Category']:<30} "
+                f"{row['Category']:<20} "
                 f"{row['Precision']:>10.4f} "
                 f"{row['Recall']:>10.4f} "
                 f"{row['F1-Score']:>10.4f} "
                 f"{int(row['Support']):>10d}"
             )
-        report.append("")
-        
-        # ROC AUC scores
-        report.append("ROC AUC SCORES")
-        report.append("-"*80)
-        for i, class_name in enumerate(self.class_names):
-            report.append(f"{class_name:<30} {roc_auc[i]:.4f}")
-        report.append(f"{'Macro Average':<30} {np.mean(list(roc_auc.values())):.4f}")
-        report.append("")
-        
-        # Analysis
-        report.append("ANALYSIS")
-        report.append("-"*80)
-        best_f1_idx = metrics_df['F1-Score'].idxmax()
-        worst_f1_idx = metrics_df['F1-Score'].idxmin()
-        
-        report.append(f"Best performing category:  {metrics_df.loc[best_f1_idx, 'Category']} "
-                     f"(F1: {metrics_df.loc[best_f1_idx, 'F1-Score']:.4f})")
-        report.append(f"Worst performing category: {metrics_df.loc[worst_f1_idx, 'Category']} "
-                     f"(F1: {metrics_df.loc[worst_f1_idx, 'F1-Score']:.4f})")
-        
-        # Confidence statistics
-        confidence = np.max(y_probs, axis=1)
-        correct = (y_true == y_pred)
-        
-        report.append("")
-        report.append(f"Average confidence (correct):   {confidence[correct].mean():.4f}")
-        report.append(f"Average confidence (incorrect): {confidence[~correct].mean():.4f}")
-        report.append("")
-        
-        # Confusion matrix insights
-        cm = confusion_matrix(y_true, y_pred)
-        report.append("COMMON MISCLASSIFICATIONS (Top 5)")
-        report.append("-"*80)
-        
-        misclass = []
-        for i in range(self.num_classes):
-            for j in range(self.num_classes):
-                if i != j and cm[i, j] > 0:
-                    misclass.append((cm[i, j], self.class_names[i], self.class_names[j]))
-        
-        misclass.sort(reverse=True)
-        for count, true_class, pred_class in misclass[:5]:
-            report.append(f"{true_class} -> {pred_class}: {count} samples")
         
         report.append("")
         report.append("="*80)
         
         report_text = "\n".join(report)
-        report_path = self.output_dir / 'evaluation_report.txt'
-        with open(report_path, 'w', encoding='utf-8') as f:
+        
+        # Save report
+        report_path = self.eval_dir / 'evaluation_report.txt'
+        with open(report_path, 'w') as f:
             f.write(report_text)
         
-        print(f"Saved: evaluation_report.txt\n")
+        print(f"✓ Saved: evaluation_report.txt\n")
         print(report_text)
         
         return report_text
     
-    def save_results_json(self, y_true, y_pred, y_probs, metrics_df, roc_auc):
-        """Save results in JSON format"""
-        results = {
-            'timestamp': datetime.now().isoformat(),
-            'checkpoint': str(self.checkpoint_path),
-            'overall_metrics': {
-                'accuracy': float(accuracy_score(y_true, y_pred)),
-                'macro_precision': float(metrics_df['Precision'].mean()),
-                'macro_recall': float(metrics_df['Recall'].mean()),
-                'macro_f1': float(metrics_df['F1-Score'].mean())
-            },
-            'per_category_metrics': {
-                row['Category']: {
-                    'precision': float(row['Precision']),
-                    'recall': float(row['Recall']),
-                    'f1_score': float(row['F1-Score']),
-                    'support': int(row['Support']),
-                    'roc_auc': float(roc_auc[idx])
-                }
-                for idx, row in metrics_df.iterrows()
-            },
-            'confusion_matrix': confusion_matrix(y_true, y_pred).tolist(),
-            'class_names': self.class_names
-        }
-        
-        json_path = self.output_dir / 'evaluation_results.json'
-        with open(json_path, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        print(f"Saved: evaluation_results.json")
-    
-    # ===========================
-    # MAIN EXECUTION
-    # ===========================
-    
     def run_full_evaluation(self):
-        """Run complete evaluation and visualization pipeline"""
-        print(f"{'='*80}")
-        print(f"STARTING COMPREHENSIVE EVALUATION")
+        """Run complete evaluation"""
+        print(f"\n{'='*80}")
+        print(f"STARTING EVALUATION")
         print(f"{'='*80}\n")
         
-        # 1. Load model and data
+        # Load model and data
         dataset, loader = self.load_model_and_data()
         
-        # 2. Create dataset overview
-        self.create_dataset_overview()
+        # Get predictions
+        y_pred, y_true, y_probs = self.get_predictions(loader)
         
-        # 3. Note: Video frame visualization skipped (using features not frames)
-        print(f"{'='*60}")
-        print(f"DATA VISUALIZATION")
-        print(f"{'='*60}")
-        print("Note: Raw video frame visualization not available")
-        print("      (Model uses pre-extracted features)")
-        print()
+        # Generate visualizations
+        print(f"\n{'='*60}")
+        print(f"GENERATING VISUALIZATIONS")
+        print(f"{'='*60}\n")
         
-        # 4. Get predictions (if model loaded)
-        if self.model is not None:
-            y_pred, y_true, y_probs = self.get_predictions(loader)
-            
-            if y_pred is not None and y_true is not None:
-                # 5. Generate evaluation visualizations
-                print(f"{'='*60}")
-                print(f"GENERATING EVALUATION METRICS")
-                print(f"{'='*60}\n")
-                
-                self.plot_confusion_matrix(y_true, y_pred, normalize=False)
-                self.plot_confusion_matrix(y_true, y_pred, normalize=True)
-                
-                metrics_df = self.plot_per_category_metrics(y_true, y_pred)
-                roc_auc = self.plot_roc_curves(y_true, y_probs)
-                self.plot_prediction_distribution(y_true, y_pred)
-                self.plot_confidence_analysis(y_true, y_pred, y_probs)
-                
-                print()
-                
-                # 6. Generate reports
-                print(f"{'='*60}")
-                print(f"GENERATING REPORTS")
-                print(f"{'='*60}\n")
-                
-                self.generate_detailed_report(y_true, y_pred, y_probs, metrics_df, roc_auc)
-                self.save_results_json(y_true, y_pred, y_probs, metrics_df, roc_auc)
-            else:
-                print("⚠ Could not generate predictions - check data format")
-        else:
-            print("⚠ No model loaded - only dataset overview generated")
+        self.plot_confusion_matrix(y_true, y_pred, normalize=False)
+        self.plot_confusion_matrix(y_true, y_pred, normalize=True)
+        metrics_df = self.plot_per_category_metrics(y_true, y_pred)
+        roc_auc = self.plot_roc_curves(y_true, y_probs)
+        
+        # Generate report
+        print(f"\n{'='*60}")
+        print(f"GENERATING REPORT")
+        print(f"{'='*60}\n")
+        
+        self.generate_report(y_true, y_pred, y_probs, metrics_df, roc_auc)
         
         print(f"\n{'='*80}")
         print(f"✅ EVALUATION COMPLETE")
         print(f"{'='*80}")
-        print(f"\nAll results saved to: {self.output_dir}")
-        print(f"\nDirectory structure:")
-        print(f"   {self.output_dir}/")
-        if self.model is not None:
-            print(f"   ├── evaluation/          (performance metrics)")
-        print(f"   ├── visualizations/      (dataset overview)")
-        if self.model is not None:
-            print(f"   ├── evaluation_report.txt")
-            print(f"   └── evaluation_results.json")
-        print()
+        print(f"\nResults saved to: {self.output_dir}")
         
-        # Print generated files
-        if self.model is not None:
-            print("Generated files:")
-            eval_files = list(self.eval_dir.glob('*.png'))
-            if eval_files:
-                print(f"\nEvaluation Metrics ({len(eval_files)} files):")
-                for f in sorted(eval_files):
-                    print(f"   • {f.name}")
+        return {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'precision': metrics_df['Precision'].mean(),
+            'recall': metrics_df['Recall'].mean(),
+            'f1': metrics_df['F1-Score'].mean()
+        }
+
+
+def find_all_ensemble_models(models_dir):
+    """Find all ensemble model checkpoints"""
+    models_path = Path(models_dir)
+    
+    # Look for patterns: best_ensemble_model_*.pt
+    pattern = 'best_ensemble_model_*.pt'
+    model_files = sorted(models_path.glob(pattern))
+    
+    if not model_files:
+        print(f"⚠ No ensemble models found matching pattern: {pattern}")
+        print(f"Looking in: {models_path}")
+        return []
+    
+    # Extract model numbers and sort
+    models = []
+    for model_file in model_files:
+        # Extract number from filename
+        try:
+            # best_ensemble_model_0.pt -> 0
+            num_str = model_file.stem.split('_')[-1]
+            model_num = int(num_str)
+            models.append((model_num, model_file))
+        except:
+            continue
+    
+    # Sort by model number
+    models.sort(key=lambda x: x[0])
+    
+    return models
+
+
+def evaluate_all_models(models_dir, h5_file, base_output_dir, device='cuda'):
+    """Evaluate all ensemble models sequentially"""
+    
+    print(f"\n{'#'*80}")
+    print(f"# MULTI-MODEL EVALUATION SYSTEM")
+    print(f"{'#'*80}\n")
+    
+    # Find all models
+    print(f"Searching for ensemble models in: {models_dir}")
+    models = find_all_ensemble_models(models_dir)
+    
+    if not models:
+        print("❌ No models found to evaluate!")
+        return
+    
+    print(f"\n✓ Found {len(models)} ensemble models:")
+    for model_num, model_path in models:
+        print(f"   Model {model_num}: {model_path.name}")
+    
+    print(f"\nH5 Features: {h5_file}")
+    print(f"Base Output Directory: {base_output_dir}")
+    print(f"Device: {device}")
+    
+    # Create summary results
+    summary_results = []
+    
+    # Evaluate each model
+    for model_num, model_path in models:
+        print(f"\n\n{'='*80}")
+        print(f"{'='*80}")
+        print(f"EVALUATING MODEL {model_num}")
+        print(f"{'='*80}")
+        print(f"{'='*80}\n")
         
-        viz_files = list(self.viz_dir.glob('*.png'))
-        if viz_files:
-            print(f"\nVisualizations ({len(viz_files)} files):")
-            for f in sorted(viz_files):
-                print(f"   • {f.name}")
+        # Create model-specific output directory
+        model_output_dir = Path(base_output_dir) / f'model_{model_num}'
         
-        if self.model is not None:
-            report_file = self.output_dir / 'evaluation_report.txt'
-            json_file = self.output_dir / 'evaluation_results.json'
-            if report_file.exists():
-                print(f"\nReports:")
-                print(f"   • evaluation_report.txt")
-            if json_file.exists():
-                print(f"   • evaluation_results.json")
+        try:
+            # Create evaluator for this model
+            evaluator = ComprehensiveEvaluator(
+                checkpoint_path=model_path,
+                h5_path=h5_file,
+                output_dir=model_output_dir,
+                device=device
+            )
+            
+            # Run evaluation
+            results = evaluator.run_full_evaluation()
+            
+            # Store results
+            summary_results.append({
+                'model_num': model_num,
+                'model_path': str(model_path),
+                'accuracy': results['accuracy'],
+                'precision': results['precision'],
+                'recall': results['recall'],
+                'f1': results['f1'],
+                'output_dir': str(model_output_dir)
+            })
+            
+            print(f"\n✅ Model {model_num} evaluation completed successfully!")
+            
+        except Exception as e:
+            print(f"\n❌ Error evaluating Model {model_num}: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            summary_results.append({
+                'model_num': model_num,
+                'model_path': str(model_path),
+                'accuracy': None,
+                'precision': None,
+                'recall': None,
+                'f1': None,
+                'error': str(e),
+                'output_dir': str(model_output_dir)
+            })
+    
+    # Generate summary report
+    print(f"\n\n{'#'*80}")
+    print(f"# EVALUATION SUMMARY")
+    print(f"{'#'*80}\n")
+    
+    generate_summary_report(summary_results, base_output_dir)
+    
+    print(f"\n{'#'*80}")
+    print(f"# ALL EVALUATIONS COMPLETE")
+    print(f"{'#'*80}")
+    print(f"\nTotal models evaluated: {len(models)}")
+    print(f"Results directory: {base_output_dir}")
+
+
+def generate_summary_report(summary_results, output_dir):
+    """Generate summary report comparing all models"""
+    
+    output_dir = Path(output_dir)
+    
+    # Create summary dataframe
+    df = pd.DataFrame(summary_results)
+    
+    # Sort by model number
+    df = df.sort_values('model_num')
+    
+    # Print summary table
+    print("="*100)
+    print(f"{'Model':<10} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12} {'Status':<10}")
+    print("="*100)
+    
+    for _, row in df.iterrows():
+        if pd.notna(row.get('accuracy')):
+            print(f"{row['model_num']:<10} "
+                  f"{row['accuracy']*100:>10.2f}%  "
+                  f"{row['precision']:>10.4f}  "
+                  f"{row['recall']:>10.4f}  "
+                  f"{row['f1']:>10.4f}  "
+                  f"{'✓ Success':<10}")
+        else:
+            error_msg = row.get('error', 'Unknown error')[:30]
+            print(f"{row['model_num']:<10} "
+                  f"{'N/A':>11}  "
+                  f"{'N/A':>10}  "
+                  f"{'N/A':>10}  "
+                  f"{'N/A':>10}  "
+                  f"✗ Failed")
+    
+    print("="*100)
+    
+    # Find best model
+    successful_models = df[df['accuracy'].notna()]
+    
+    if len(successful_models) > 0:
+        best_model = successful_models.loc[successful_models['accuracy'].idxmax()]
+        print(f"\n🏆 BEST MODEL: Model {best_model['model_num']}")
+        print(f"   Accuracy: {best_model['accuracy']*100:.2f}%")
+        print(f"   Precision: {best_model['precision']:.4f}")
+        print(f"   Recall: {best_model['recall']:.4f}")
+        print(f"   F1-Score: {best_model['f1']:.4f}")
+        print(f"   Results: {best_model['output_dir']}")
+    
+    # Save summary to CSV
+    csv_path = output_dir / 'evaluation_summary.csv'
+    df.to_csv(csv_path, index=False)
+    print(f"\n✓ Summary saved to: {csv_path}")
+    
+    # Save detailed text report
+    report_lines = []
+    report_lines.append("="*100)
+    report_lines.append("MULTI-MODEL EVALUATION SUMMARY REPORT")
+    report_lines.append("="*100)
+    report_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report_lines.append(f"Total Models Evaluated: {len(df)}")
+    report_lines.append(f"Successful Evaluations: {len(successful_models)}")
+    report_lines.append(f"Failed Evaluations: {len(df) - len(successful_models)}")
+    report_lines.append("")
+    report_lines.append("="*100)
+    report_lines.append(f"{'Model':<10} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12}")
+    report_lines.append("="*100)
+    
+    for _, row in df.iterrows():
+        if pd.notna(row.get('accuracy')):
+            report_lines.append(
+                f"{row['model_num']:<10} "
+                f"{row['accuracy']*100:>10.2f}%  "
+                f"{row['precision']:>10.4f}  "
+                f"{row['recall']:>10.4f}  "
+                f"{row['f1']:>10.4f}"
+            )
+        else:
+            report_lines.append(
+                f"{row['model_num']:<10} "
+                f"{'FAILED':>11}  "
+                f"{'N/A':>10}  "
+                f"{'N/A':>10}  "
+                f"{'N/A':>10}"
+            )
+    
+    report_lines.append("="*100)
+    
+    if len(successful_models) > 0:
+        report_lines.append("")
+        report_lines.append("BEST MODEL")
+        report_lines.append("-"*100)
+        report_lines.append(f"Model Number: {best_model['model_num']}")
+        report_lines.append(f"Model Path: {best_model['model_path']}")
+        report_lines.append(f"Accuracy: {best_model['accuracy']*100:.2f}%")
+        report_lines.append(f"Precision: {best_model['precision']:.4f}")
+        report_lines.append(f"Recall: {best_model['recall']:.4f}")
+        report_lines.append(f"F1-Score: {best_model['f1']:.4f}")
+        report_lines.append(f"Output Directory: {best_model['output_dir']}")
+        report_lines.append("")
+        
+        # Statistics
+        report_lines.append("STATISTICS")
+        report_lines.append("-"*100)
+        report_lines.append(f"Mean Accuracy: {successful_models['accuracy'].mean()*100:.2f}%")
+        report_lines.append(f"Std Accuracy: {successful_models['accuracy'].std()*100:.2f}%")
+        report_lines.append(f"Mean Precision: {successful_models['precision'].mean():.4f}")
+        report_lines.append(f"Mean Recall: {successful_models['recall'].mean():.4f}")
+        report_lines.append(f"Mean F1-Score: {successful_models['f1'].mean():.4f}")
+    
+    report_lines.append("")
+    report_lines.append("="*100)
+    
+    report_text = "\n".join(report_lines)
+    
+    # Save text report
+    report_path = output_dir / 'evaluation_summary.txt'
+    with open(report_path, 'w') as f:
+        f.write(report_text)
+    
+    print(f"✓ Detailed report saved to: {report_path}")
+    
+    # Generate comparison visualization
+    if len(successful_models) > 0:
+        plot_model_comparison(successful_models, output_dir)
+
+
+def plot_model_comparison(df, output_dir):
+    """Create comparison plots for all models"""
+    
+    output_dir = Path(output_dir)
+    viz_dir = output_dir / 'comparison_plots'
+    viz_dir.mkdir(exist_ok=True)
+    
+    # Sort by model number
+    df = df.sort_values('model_num')
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    
+    models = df['model_num'].values
+    
+    # Accuracy comparison
+    axes[0, 0].bar(models, df['accuracy']*100, color='skyblue', edgecolor='navy', alpha=0.7)
+    axes[0, 0].set_xlabel('Model Number', fontweight='bold')
+    axes[0, 0].set_ylabel('Accuracy (%)', fontweight='bold')
+    axes[0, 0].set_title('Accuracy Comparison', fontweight='bold', fontsize=14)
+    axes[0, 0].grid(axis='y', alpha=0.3)
+    axes[0, 0].axhline(y=df['accuracy'].mean()*100, color='red', linestyle='--', 
+                       label=f"Mean: {df['accuracy'].mean()*100:.2f}%")
+    axes[0, 0].legend()
+    
+    # Precision comparison
+    axes[0, 1].bar(models, df['precision'], color='lightcoral', edgecolor='darkred', alpha=0.7)
+    axes[0, 1].set_xlabel('Model Number', fontweight='bold')
+    axes[0, 1].set_ylabel('Precision', fontweight='bold')
+    axes[0, 1].set_title('Precision Comparison', fontweight='bold', fontsize=14)
+    axes[0, 1].set_ylim([0, 1])
+    axes[0, 1].grid(axis='y', alpha=0.3)
+    axes[0, 1].axhline(y=df['precision'].mean(), color='red', linestyle='--',
+                       label=f"Mean: {df['precision'].mean():.4f}")
+    axes[0, 1].legend()
+    
+    # Recall comparison
+    axes[1, 0].bar(models, df['recall'], color='lightgreen', edgecolor='darkgreen', alpha=0.7)
+    axes[1, 0].set_xlabel('Model Number', fontweight='bold')
+    axes[1, 0].set_ylabel('Recall', fontweight='bold')
+    axes[1, 0].set_title('Recall Comparison', fontweight='bold', fontsize=14)
+    axes[1, 0].set_ylim([0, 1])
+    axes[1, 0].grid(axis='y', alpha=0.3)
+    axes[1, 0].axhline(y=df['recall'].mean(), color='red', linestyle='--',
+                       label=f"Mean: {df['recall'].mean():.4f}")
+    axes[1, 0].legend()
+    
+    # F1-Score comparison
+    axes[1, 1].bar(models, df['f1'], color='plum', edgecolor='purple', alpha=0.7)
+    axes[1, 1].set_xlabel('Model Number', fontweight='bold')
+    axes[1, 1].set_ylabel('F1-Score', fontweight='bold')
+    axes[1, 1].set_title('F1-Score Comparison', fontweight='bold', fontsize=14)
+    axes[1, 1].set_ylim([0, 1])
+    axes[1, 1].grid(axis='y', alpha=0.3)
+    axes[1, 1].axhline(y=df['f1'].mean(), color='red', linestyle='--',
+                       label=f"Mean: {df['f1'].mean():.4f}")
+    axes[1, 1].legend()
+    
+    plt.suptitle('Model Performance Comparison', fontsize=18, fontweight='bold')
+    plt.tight_layout()
+    
+    # Save plot
+    plot_path = viz_dir / 'model_comparison.png'
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Comparison plot saved to: {plot_path}")
+    plt.close()
+    
+    # Create combined metrics plot
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    x = np.arange(len(models))
+    width = 0.2
+    
+    ax.bar(x - 1.5*width, df['accuracy']*100, width, label='Accuracy (%)', color='skyblue')
+    ax.bar(x - 0.5*width, df['precision']*100, width, label='Precision (%)', color='lightcoral')
+    ax.bar(x + 0.5*width, df['recall']*100, width, label='Recall (%)', color='lightgreen')
+    ax.bar(x + 1.5*width, df['f1']*100, width, label='F1-Score (%)', color='plum')
+    
+    ax.set_xlabel('Model Number', fontweight='bold', fontsize=12)
+    ax.set_ylabel('Score (%)', fontweight='bold', fontsize=12)
+    ax.set_title('All Metrics Comparison', fontweight='bold', fontsize=16)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models)
+    ax.legend(fontsize=11)
+    ax.grid(axis='y', alpha=0.3)
+    ax.set_ylim([0, 105])
+    
+    plt.tight_layout()
+    
+    combined_plot_path = viz_dir / 'combined_metrics.png'
+    plt.savefig(combined_plot_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Combined metrics plot saved to: {combined_plot_path}")
+    plt.close()
 
 
 def main():
-    """Main execution function"""
+    """Main execution"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Comprehensive model evaluation and visualization')
-    parser.add_argument(
-        '--checkpoint',
-        type=str,
-        default=None,
-        help='Path to model checkpoint (optional for data-only viz)'
-    )
-    parser.add_argument(
-        '--data_dir',
-        type=str,
-        default='video_classification_project/data/processed',
-        help='Path to processed data directory'
-    )
-    parser.add_argument(
-        '--output_dir',
-        type=str,
-        default='video_classification_project/results',
-        help='Directory to save all results'
-    )
-    parser.add_argument(
-        '--split',
-        type=str,
-        default='val',
-        choices=['val', 'test'],
-        help='Dataset split to evaluate'
-    )
-    parser.add_argument(
-        '--device',
-        type=str,
-        default='cuda',
-        choices=['cuda', 'cpu'],
-        help='Device to use for evaluation'
-    )
+    parser = argparse.ArgumentParser(description='Evaluate all ensemble models')
+    parser.add_argument('--models_dir', type=str, 
+                       default='video_classification_project/models_enhanced',
+                       help='Directory containing model checkpoints')
+    parser.add_argument('--h5_file', type=str, 
+                       default='video_classification_project/features_enhanced/val_features_multiscale.h5', 
+                       help='Path to H5 features file')
+    parser.add_argument('--output_dir', type=str, 
+                       default='video_classification_project/results_all_models',
+                       help='Base output directory for all results')
+    parser.add_argument('--device', type=str, default='cuda',
+                       help='Device to use (cuda/cpu)')
     
     args = parser.parse_args()
     
-    # Validate paths
-    data_dir = Path(args.data_dir)
-    if not data_dir.exists():
-        print(f"Error: Data directory not found at {data_dir}")
-        return
-    
-    if args.checkpoint:
-        checkpoint_path = Path(args.checkpoint)
-        if not checkpoint_path.exists():
-            print(f"Error: Checkpoint not found at {checkpoint_path}")
-            print("\nSearching for available checkpoints...")
-            
-            possible_dirs = [
-                Path('video_classification_project/models/checkpoints'),
-                Path('models/checkpoints'),
-                Path('checkpoints')
-            ]
-            
-            for checkpoint_dir in possible_dirs:
-                if checkpoint_dir.exists():
-                    checkpoints = list(checkpoint_dir.glob('*.pt'))
-                    if checkpoints:
-                        print(f"\nIn {checkpoint_dir}:")
-                        for ckpt in sorted(checkpoints)[:10]:
-                            print(f"   {ckpt}")
-            return
-    
-    # Create evaluator and run
-    evaluator = ComprehensiveEvaluator(
-        checkpoint_path=args.checkpoint,
-        data_dir=data_dir,
-        output_dir=args.output_dir,
-        device=args.device,
-        split=args.split
+    # Run evaluation for all models
+    evaluate_all_models(
+        models_dir=args.models_dir,
+        h5_file=args.h5_file,
+        base_output_dir=args.output_dir,
+        device=args.device
     )
-    
-    try:
-        evaluator.run_full_evaluation()
-        
-    except Exception as e:
-        print(f"\nError during evaluation: {e}")
-        import traceback
-        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) == 1:
-        print("="*80)
-        print("COMPREHENSIVE EVALUATION - AUTO MODE")
-        print("="*80)
-        print("\nSearching for checkpoint and data...")
-        
-        # Auto-detect checkpoint
-        possible_checkpoints = [
-            Path('video_classification_project/models/checkpoints/best_model.pt'),
-            Path('models/checkpoints/best_model.pt'),
-            Path('checkpoints/best_model.pt'),
-            Path('best_model.pt')
-        ]
-        
-        checkpoint_path = None
-        for path in possible_checkpoints:
-            if path.exists():
-                checkpoint_path = path
-                print(f"✓ Found checkpoint: {path}")
-                break
-        
-        if checkpoint_path is None:
-            print("⚠ No checkpoint found - will run data visualization only")
-        
-        # Auto-detect data directory
-        data_dir_candidates = [
-            Path('video_classification_project/data/processed'),
-            Path('data/processed'),
-            Path('../data/processed'),
-            Path('processed')
-        ]
-        
-        data_dir = None
-        for path in data_dir_candidates:
-            if path.exists():
-                data_dir = path
-                print(f"✓ Found data directory: {path}")
-                break
-        
-        if data_dir is None:
-            print("\n❌ Data directory not found.")
-            print("Please specify with --data_dir argument")
-            sys.exit(1)
-        
-        # Run evaluation
-        print(f"\n{'='*80}")
-        print("STARTING AUTO EVALUATION")
-        print(f"{'='*80}\n")
-        
-        evaluator = ComprehensiveEvaluator(
-            checkpoint_path=checkpoint_path,
-            data_dir=data_dir,
-            output_dir='video_classification_project/results',
-            device='cuda' if torch.cuda.is_available() else 'cpu',
-            split='val'
-        )
-        
-        try:
-            evaluator.run_full_evaluation()
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        main()
+    main()

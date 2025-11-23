@@ -1,0 +1,57 @@
+{
+  "model_idx": 0,
+  "checkpoint": "best_ensemble_model_0",
+  "timestamp": "2025-11-01T01:31:32.630553",
+  "standard": {
+    "accuracy": 25.485436893203882,
+    "macro_f1": 10.154738878143133,
+    "per_class": {
+      "Animation": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "Flat_Content": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "Gaming": {
+        "precision": 25.485436893203882,
+        "recall": 100.0,
+        "f1": 40.61895551257253
+      },
+      "Natural_Content": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      }
+    }
+  },
+  "tta": {
+    "accuracy": 25.485436893203882,
+    "macro_f1": 10.154738878143133,
+    "per_class": {
+      "Animation": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "Flat_Content": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "Gaming": {
+        "precision": 25.485436893203882,
+        "recall": 100.0,
+        "f1": 40.61895551257253
+      },
+      "Natural_Content": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      }
+    }
+  }
+}

@@ -1,3 +1,7 @@
+# CRITICAL: Set CUDA device BEFORE importing torch
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -38,13 +42,13 @@ class VideoPreprocessor:
         self.category_structure = {
             'Animation': ['Cartoon', 'Animation', 'Lego minifigure', 'Naruto',
                           'The Walt Disney Company', 'Dragon Ball', 'Sonic the Hedgehog',
-                          'One Piece', 'Walt Disney World', 'Bleach', 'Mickey Mouse'],
+                          'One Piece', 'Bleach'],
             'Gaming': ['Games', 'Video game', 'Minecraft', 'Call of Duty', 'Grand Theft Auto', 'Grand Theft Auto V',
                        'World of Warcraft', 'League of Legends', 'Battlefield', 'RuneScape',
-                       'Action-adventure game', 'FIFA 15', 'Counter-Strike', 'Need for Speed'],
+                       'Action-adventure game', 'FIFA 15'],
             'Natural_Content': ['Animal', 'Pet', 'Fishing', 'Fish', 'Outdoor recreation', 'Dog',
                                 'Horse', 'Bird', 'Plant', 'Cat', 'Farm', 'Garden', 'Nature',
-                                'Tree', 'Wildlife', 'Chicken', 'Lion', 'Deer', 'Bear', 'Elephant'],
+                                'Tree', 'Wildlife', 'Chicken'],
             'Flat_Content': ['Website', 'Chart', 'Map', 'Logo', 'Text', 'Typography',
                              'Screencast', 'Illustration', 'Poster']
         }
@@ -52,7 +56,7 @@ class VideoPreprocessor:
         self.resume_file = self.output_dir / "resume_checkpoint.json"
 
     def setup_processing_mode(self):
-        """Setup CPU or GPU processing mode based on user choice"""
+        """Setup CPU or GPU processing mode based on user choice - MIG COMPATIBLE"""
         print("\n" + "="*50)
         print("VIDEO PREPROCESSOR - PROCESSING MODE SELECTION")
         print("="*50)
@@ -71,16 +75,47 @@ class VideoPreprocessor:
                     print(f"Selected: CPU Mode")
                     break
                 elif choice == 2:
-                    if torch.cuda.is_available():
+                    # CRITICAL FIX: Check CUDA availability WITHOUT triggering initialization
+                    try:
+                        # Set environment variable BEFORE any CUDA operations
+                        import os
+                        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+                        
+                        # Now check availability (should work with MIG)
+                        if not torch.cuda.is_available():
+                            print("GPU not available. Please select CPU mode (1).")
+                            continue
+                        
                         self.processing_mode = 'gpu'
-                        self.device = torch.device('cuda')
+                        
+                        # Use cuda:0 explicitly (MIG-safe)
+                        self.device = torch.device('cuda:0')
+                        
+                        # Set as current device
+                        torch.cuda.set_device(0)
+                        
+                        # Clear any cached state
+                        torch.cuda.empty_cache()
+                        
                         self._setup_gpu_components()
                         print(f"Selected: GPU Mode")
-                        print(f"GPU: {torch.cuda.get_device_name()}")
+                        
+                        # Get device name safely
+                        try:
+                            gpu_name = torch.cuda.get_device_name(0)
+                            print(f"GPU: {gpu_name}")
+                        except:
+                            print(f"GPU: CUDA Device 0 (MIG Instance)")
+                        
                         break
-                    else:
-                        print("GPU not available. Please select CPU mode (1).")
-                        continue
+                        
+                    except Exception as e:
+                        print(f"Error initializing GPU: {e}")
+                        print("Falling back to CPU mode (1).")
+                        self.processing_mode = 'cpu'
+                        self.device = torch.device('cpu')
+                        self.batch_size = 1
+                        break
                 else:
                     print("Invalid choice. Please enter 1 or 2.")
             except ValueError:
@@ -90,42 +125,67 @@ class VideoPreprocessor:
         print("="*50 + "\n")
 
     def _setup_gpu_components(self):
-        """Setup GPU-specific components - OPTIMIZED FOR MIG"""
+        """Setup GPU-specific components - MIG OPTIMIZED WITH SAFE INITIALIZATION"""
+        # Basic transforms (no device operations yet)
         self.transform_gpu = transforms.Compose([
             transforms.Resize(int(self.img_size[0] * 1.15)),
             transforms.CenterCrop(self.img_size),
             transforms.ToTensor(),
         ])
         
-        # GPU normalization tensors
-        self.normalize_mean = torch.tensor([0.485, 0.456, 0.406]).to(self.device).view(3, 1, 1)
-        self.normalize_std = torch.tensor([0.229, 0.224, 0.225]).to(self.device).view(3, 1, 1)
+        # CRITICAL FIX: Create tensors directly on the device
+        # Use index 0 explicitly for MIG compatibility
+        try:
+            self.normalize_mean = torch.tensor(
+                [0.485, 0.456, 0.406], 
+                device='cuda:0',  # Explicit device string
+                dtype=torch.float32
+            ).view(3, 1, 1)
+            
+            self.normalize_std = torch.tensor(
+                [0.229, 0.224, 0.225], 
+                device='cuda:0',  # Explicit device string
+                dtype=torch.float32
+            ).view(3, 1, 1)
+        except Exception as e:
+            print(f"Error creating normalization tensors: {e}")
+            raise
+        
+        # Test GPU operation to ensure initialization worked
+        try:
+            test_tensor = torch.randn(1, 3, 256, 256, device='cuda:0')
+            test_norm = (test_tensor - self.normalize_mean) / self.normalize_std
+            del test_tensor, test_norm
+            torch.cuda.empty_cache()
+            print("✓ GPU initialization test passed")
+        except Exception as e:
+            print(f"⚠ GPU initialization test failed: {e}")
+            raise RuntimeError("GPU initialization failed - try CPU mode instead")
         
         # CRITICAL: Detect actual available memory (MIG-aware)
         try:
-            # Get free memory, not total memory
+            # Get free memory using device index
             torch.cuda.empty_cache()
-            free_memory = torch.cuda.mem_get_info()[0]  # Free memory in bytes
-            total_memory = torch.cuda.mem_get_info()[1]  # Total memory
+            free_memory, total_memory = torch.cuda.mem_get_info(0)
             
             print(f"GPU Memory: {free_memory / 1e9:.2f} GB free / {total_memory / 1e9:.2f} GB total")
             
             # Calculate batch size based on ACTUAL free memory
             # Each video tensor: 64 frames × 3 channels × 256 × 256 × 4 bytes (float32)
             bytes_per_video = 64 * 3 * 256 * 256 * 4
-            safe_memory = free_memory * 0.6  # Use only 60% to leave headroom
+            safe_memory = free_memory * 0.4  # Use only 40% for MIG safety
             max_batch = int(safe_memory / bytes_per_video)
             
-            # Conservative batch size for MIG
-            self.batch_size = min(8, max(2, max_batch))
+            # Very conservative batch size for MIG
+            self.batch_size = min(4, max(1, max_batch))
             
             print(f"Optimized batch size for MIG: {self.batch_size}")
             print(f"Estimated memory per batch: {(bytes_per_video * self.batch_size) / 1e9:.2f} GB")
             
         except Exception as e:
             print(f"Warning: Could not detect GPU memory: {e}")
-            print("Using conservative batch size: 2")
-            self.batch_size = 2
+            print("Using conservative batch size: 1")
+            self.batch_size = 1
 
     def normalize_on_gpu(self, tensor_batch):
         """Perform normalization on GPU for better performance"""
@@ -221,6 +281,7 @@ class VideoPreprocessor:
         """Extract frames from multiple segments of the video"""
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
+            print(f"  ERROR: Cannot open video: {video_path}")
             return []
         
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -228,6 +289,7 @@ class VideoPreprocessor:
         duration = total_frames / fps if fps > 0 else 0
         
         if total_frames == 0 or duration < 1.0:
+            print(f"  WARNING: Invalid video (frames={total_frames}, duration={duration:.2f}s): {video_path.name}")
             cap.release()
             return []
         
@@ -745,8 +807,8 @@ class VideoPreprocessor:
 
 def main():
     preprocessor = VideoPreprocessor(
-        input_dir="video_classification_project/data/raw",
-        output_dir="video_classification_project/data/processed",
+        input_dir="/workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/raw",
+        output_dir="/workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/processed",
         frames_per_video=64,
         img_size=(256, 256),
         clip_duration=10

@@ -1044,7 +1044,7 @@ def main():
     args = parser.parse_args()
     
     # Set default output directory
-    default_output = Path('video_classification_project/results/checkpoint_analysis')
+    default_output = Path('/workspace/NVIDIA-Video-Classification-Project/video_classification_project/results/checkpoint_analysis')
     output_dir = Path(args.output_dir) if args.output_dir else default_output
     
     if not args.checkpoint:
@@ -1056,9 +1056,9 @@ def main():
             Path('checkpoints'),
             Path('models'),
             Path('models_enhanced'),
-            Path('video_classification_project/models'),
-            Path('video_classification_project/models/checkpoints'),
-            Path('video_classification_project/models_enhanced')
+            Path('/workspace/NVIDIA-Video-Classification-Project/video_classification_project/models'),
+            Path('/workspace/NVIDIA-Video-Classification-Project/video_classification_project/models/checkpoints'),
+            Path('/workspace/NVIDIA-Video-Classification-Project/video_classification_project/models_enhanced')
         ]
         
         checkpoint_files = []

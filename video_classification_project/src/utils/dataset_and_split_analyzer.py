@@ -576,9 +576,13 @@ class VideoDatasetAnalyzer:
 
 def main():
     # Configuration
-    split_dataset_path = r"video_classification_project\data\raw"
-    original_dataset_path = r"Dataset"  # Set to None if not available
-    results_dir = "video_classification_project/results"  # Results directory
+    #split_dataset_path = r"video_classification_project\data\raw"
+    #original_dataset_path = r"Dataset"  # Set to None if not available
+    #results_dir = "video_classification_project/results"  # Results directory
+
+    split_dataset_path = "/workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/raw"
+    original_dataset_path = None  # since you said it's null/no
+    results_dir = "/workspace/NVIDIA-Video-Classification-Project/video_classification_project/results"
     
     print("=" * 70)
     print("VIDEO DATASET ANALYZER & VALIDATOR")
