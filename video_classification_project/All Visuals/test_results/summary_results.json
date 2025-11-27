@@ -1,0 +1,51 @@
+{
+  "timestamp": "2025-11-01T01:44:14.861476",
+  "num_models": 5,
+  "test_samples": 412,
+  "individual_models": [
+    {
+      "model_idx": 0,
+      "checkpoint": "best_ensemble_model_0",
+      "standard_accuracy": 25.485436893203882,
+      "tta_accuracy": 25.485436893203882,
+      "standard_f1": 10.154738878143133,
+      "tta_f1": 10.154738878143133
+    },
+    {
+      "model_idx": 1,
+      "checkpoint": "best_ensemble_model_1",
+      "standard_accuracy": 74.51456310679612,
+      "tta_accuracy": 74.51456310679612,
+      "standard_f1": 65.2540125368228,
+      "tta_f1": 65.27341574785609
+    },
+    {
+      "model_idx": 2,
+      "checkpoint": "best_ensemble_model_2",
+      "standard_accuracy": 92.47572815533981,
+      "tta_accuracy": 91.74757281553399,
+      "standard_f1": 92.41660804605075,
+      "tta_f1": 91.64656926594765
+    },
+    {
+      "model_idx": 3,
+      "checkpoint": "best_ensemble_model_3",
+      "standard_accuracy": 91.74757281553399,
+      "tta_accuracy": 91.99029126213593,
+      "standard_f1": 91.62602976033429,
+      "tta_f1": 91.85050931853597
+    },
+    {
+      "model_idx": 4,
+      "checkpoint": "best_ensemble_model_4",
+      "standard_accuracy": 93.44660194174757,
+      "tta_accuracy": 93.20388349514563,
+      "standard_f1": 93.38489091279057,
+      "tta_f1": 93.12631740566066
+    }
+  ],
+  "best_model": {
+    "model_idx": 4,
+    "accuracy": 93.20388349514563
+  }
+}

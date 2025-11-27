@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVIDIA Video Classification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 50%, #f8fafc 100%);
+        }
+        @keyframes pulse-scale {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .pulse-animate {
+            animation: pulse-scale 2s ease-in-out infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+        .video-card {
+            transition: all 0.3s ease;
+        }
+        .video-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.1);
+        }
+        .video-card.selected {
+            border-color: #10b981;
+            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div id="app">
+        <!-- Header -->
+        <div class="border-b border-slate-200 bg-white/80 backdrop-blur-sm">
+            <div class="max-w-6xl mx-auto px-6 py-6">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                            NVIDIA Video Classification
+                        </h1>
+                        <p class="text-slate-500 text-sm mt-1">Deep Learning Ensemble System</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Cards -->
+        <div class="max-w-6xl mx-auto px-6 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div class="flex items-center gap-3 mb-2">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                        <h3 class="font-semibold text-slate-800">Deep Architecture</h3>
+                    </div>
+                    <p class="text-sm text-slate-600">4-layer BiLSTM with multi-head attention</p>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div class="flex items-center gap-3 mb-2">
+                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <h3 class="font-semibold text-slate-800">Ensemble Power</h3>
+                    </div>
+                    <p class="text-sm text-slate-600">4-model ensemble with TTA</p>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div class="flex items-center gap-3 mb-2">
+                        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <h3 class="font-semibold text-slate-800">High Accuracy</h3>
+                    </div>
+                    <p class="text-sm text-slate-600">93.45% classification accuracy</p>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                
+                <!-- Video Selection Section -->
+                <div id="selection-section" class="p-12">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-3">Select a Video from Dataset</h2>
+                        <p class="text-slate-600">Choose a video to analyze from our test dataset</p>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="loading-videos" class="text-center py-12">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl mb-4 shadow-lg">
+                            <svg class="w-8 h-8 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                        </div>
+                        <p class="text-slate-600">Loading available videos...</p>
+                    </div>
+
+                    <!-- Video Categories -->
+                    <div id="video-categories" class="hidden space-y-8">
+                        <!-- Categories will be inserted here -->
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="error-message" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p class="text-red-800 text-sm" id="error-text"></p>
+                    </div>
+
+                    <!-- Selected Video Preview -->
+                    <div id="selected-preview" class="hidden mt-8 bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="p-3 bg-white rounded-xl shadow-sm">
+                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-slate-500">Selected Video</p>
+                                    <p class="font-semibold text-slate-800" id="selected-video-name"></p>
+                                </div>
+                            </div>
+                            <button id="analyze-selected-btn" class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
+                                Analyze Video
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Section -->
+                <div id="processing-section" class="hidden p-12">
+                    <div class="max-w-2xl mx-auto">
+                        <div class="text-center mb-8">
+                            <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg pulse-animate">
+                                <svg class="w-10 h-10 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </div>
+                            <h2 class="text-2xl font-bold text-slate-800 mb-2">Analyzing Video</h2>
+                            <p class="text-slate-600" id="current-step">Initializing...</p>
+                        </div>
+
+                        <div class="bg-slate-100 rounded-full h-3 overflow-hidden mb-4 shadow-inner">
+                            <div id="progress-bar" class="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-300 ease-out" style="width: 0%"></div>
+                        </div>
+                        
+                        <p class="text-center text-slate-700 font-semibold" id="progress-text">0%</p>
+
+                        <div class="mt-8 space-y-2" id="steps-container">
+                            <!-- Steps will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results-section" class="hidden p-12">
+                    <div class="max-w-3xl mx-auto">
+                        <div class="text-center mb-8">
+                            <div id="result-icon" class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-6 shadow-xl text-5xl">
+                                <!-- Emoji will be inserted here -->
+                            </div>
+                            <h2 class="text-4xl font-bold text-slate-800 mb-3" id="result-category"></h2>
+                            <div class="inline-block bg-slate-100 px-6 py-3 rounded-full">
+                                <p class="text-slate-700 font-semibold">
+                                    Confidence: <span class="text-green-600 text-xl" id="result-confidence"></span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-8 border border-slate-200 mb-6">
+                            <h3 class="font-semibold text-slate-800 mb-6 flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                                Individual Model Scores
+                            </h3>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="model-scores-container">
+                                <!-- Model scores will be inserted here -->
+                            </div>
+                        </div>
+
+                        <button id="reset-btn" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                            Analyze Another Video
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-12 text-center text-slate-500 text-sm space-y-2 pb-8">
+                <p class="font-medium text-slate-600">Made by Students of</p>
+                <p class="font-semibold text-slate-700">Vishwakarma Institute of Information Technology</p>
+                <p class="text-slate-600">Pune, India 🇮🇳</p>
+                <p class="mt-4">Manas Kulkarni, Rajlakshmi Desai, Samiksha Nalawade</p>
+                <p class="mt-3 italic">Dr. Shripad Bhatlawande</p>
+                <p class="text-slate-500">Project Guide</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const selectionSection = document.getElementById('selection-section');
+        const processingSection = document.getElementById('processing-section');
+        const resultsSection = document.getElementById('results-section');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const loadingVideos = document.getElementById('loading-videos');
+        const videoCategories = document.getElementById('video-categories');
+        const selectedPreview = document.getElementById('selected-preview');
+        const selectedVideoName = document.getElementById('selected-video-name');
+
+        let selectedVideo = null;
+        let availableVideos = {};
+
+        const categoryConfig = {
+            'Animation': { color: 'from-purple-500 to-pink-500', emoji: '🎨', borderColor: 'border-purple-200' },
+            'Gaming': { color: 'from-blue-500 to-cyan-500', emoji: '🎮', borderColor: 'border-blue-200' },
+            'Natural_Content': { color: 'from-green-500 to-emerald-500', emoji: '🌿', borderColor: 'border-green-200' },
+            'Flat_Content': { color: 'from-orange-500 to-amber-500', emoji: '📊', borderColor: 'border-orange-200' }
+        };
+
+        const processingSteps = [
+            'Loading Features',
+            'Running Model 1',
+            'Running Model 2',
+            'Running Model 3',
+            'Running Model 4',
+            'Ensemble Prediction',
+            'Finalizing Results'
+        ];
+
+        // Load available videos on page load
+        async function loadVideos() {
+            try {
+                const response = await fetch('/api/videos');
+                const data = await response.json();
+
+                if (data.success) {
+                    availableVideos = data.videos;
+                    displayVideoCategories();
+                } else {
+                    throw new Error(data.error || 'Failed to load videos');
+                }
+            } catch (error) {
+                console.error('Error loading videos:', error);
+                loadingVideos.classList.add('hidden');
+                showError(`Failed to load videos: ${error.message}`);
+            }
+        }
+
+        function displayVideoCategories() {
+            loadingVideos.classList.add('hidden');
+            videoCategories.classList.remove('hidden');
+
+            const html = Object.entries(availableVideos).map(([category, videos]) => {
+                const config = categoryConfig[category] || categoryConfig['Natural_Content'];
+                return `
+                    <div class="category-section">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-3xl">${config.emoji}</div>
+                            <h3 class="text-xl font-bold text-slate-800">${category.replace('_', ' ')}</h3>
+                            <span class="text-sm text-slate-500">(${videos.length} videos)</span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${videos.map(video => `
+                                <div class="video-card bg-white rounded-xl p-4 border-2 ${config.borderColor} cursor-pointer" 
+                                     data-video="${video}" 
+                                     data-category="${category}">
+                                    <div class="flex items-center gap-3">
+                                        <div class="p-2 bg-gradient-to-br ${config.color} rounded-lg">
+                                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="font-medium text-slate-800 truncate">${video}</p>
+                                            <p class="text-xs text-slate-500">${category.replace('_', ' ')}</p>
+                                        </div>
+                                        <svg class="w-5 h-5 text-green-600 hidden check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            videoCategories.innerHTML = html;
+
+            // Add click handlers to video cards
+            document.querySelectorAll('.video-card').forEach(card => {
+                card.addEventListener('click', () => selectVideo(card));
+            });
+        }
+
+        function selectVideo(card) {
+            // Deselect all cards
+            document.querySelectorAll('.video-card').forEach(c => {
+                c.classList.remove('selected');
+                c.querySelector('.check-icon').classList.add('hidden');
+            });
+
+            // Select clicked card
+            card.classList.add('selected');
+            card.querySelector('.check-icon').classList.remove('hidden');
+
+            selectedVideo = card.dataset.video;
+            selectedVideoName.textContent = selectedVideo;
+            selectedPreview.classList.remove('hidden');
+
+            // Scroll to preview
+            selectedPreview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        document.getElementById('analyze-selected-btn').addEventListener('click', analyzeVideo);
+        document.getElementById('reset-btn').addEventListener('click', resetApp);
+
+        async function analyzeVideo() {
+            if (!selectedVideo) return;
+
+            // Show processing section
+            selectionSection.classList.add('hidden');
+            processingSection.classList.remove('hidden');
+
+            // Initialize steps UI
+            const stepsContainer = document.getElementById('steps-container');
+            stepsContainer.innerHTML = processingSteps.map((step, idx) => `
+                <div id="step-${idx}" class="flex items-center gap-3 p-3 rounded-lg transition-all opacity-40">
+                    <div class="w-2 h-2 rounded-full bg-slate-300"></div>
+                    <span class="text-sm font-medium text-slate-700">${step}</span>
+                </div>
+            `).join('');
+
+            try {
+                // Simulate progress for better UX
+                let currentStepIndex = 0;
+                const progressInterval = setInterval(() => {
+                    if (currentStepIndex < processingSteps.length) {
+                        updateStep(currentStepIndex, 'active');
+                        if (currentStepIndex > 0) {
+                            updateStep(currentStepIndex - 1, 'complete');
+                        }
+                        document.getElementById('current-step').textContent = processingSteps[currentStepIndex];
+                        const progress = ((currentStepIndex + 1) / processingSteps.length) * 90;
+                        updateProgress(progress);
+                        currentStepIndex++;
+                    }
+                }, 1500);
+
+                const formData = new FormData();
+                formData.append('selected_video', selectedVideo);
+
+                const response = await fetch('/api/classify', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                clearInterval(progressInterval);
+
+                if (!response.ok) {
+                    throw new Error('Classification failed');
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    updateProgress(100);
+                    for (let i = 0; i < processingSteps.length; i++) {
+                        updateStep(i, 'complete');
+                    }
+                    
+                    setTimeout(() => {
+                        showResults(data.result);
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError(`Error: ${error.message}`);
+                resetApp();
+            }
+        }
+
+        function updateStep(index, state) {
+            const stepEl = document.getElementById(`step-${index}`);
+            if (!stepEl) return;
+
+            const dot = stepEl.querySelector('.w-2');
+            
+            if (state === 'active') {
+                stepEl.className = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
+                dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+            } else if (state === 'complete') {
+                stepEl.className = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-slate-50 opacity-60';
+                dot.className = 'w-2 h-2 rounded-full bg-green-400';
+            }
+        }
+
+        function updateProgress(percent) {
+            document.getElementById('progress-bar').style.width = `${percent}%`;
+            document.getElementById('progress-text').textContent = `${Math.round(percent)}%`;
+        }
+
+        function showResults(result) {
+            processingSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+
+            const category = result.category;
+            const categoryInfo = categoryConfig[category] || categoryConfig['Natural_Content'];
+
+            // Set icon and category
+            const iconEl = document.getElementById('result-icon');
+            iconEl.className = `inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br ${categoryInfo.color} rounded-3xl mb-6 shadow-xl text-5xl`;
+            iconEl.textContent = categoryInfo.emoji;
+
+            document.getElementById('result-category').textContent = category.replace('_', ' ');
+            document.getElementById('result-confidence').textContent = `${result.confidence.toFixed(2)}%`;
+
+            // Get all category names from result.all_scores
+            const categories = Object.keys(result.all_scores);
+
+            // Set model scores with category breakdown
+            const scoresContainer = document.getElementById('model-scores-container');
+            scoresContainer.innerHTML = result.model_scores.map(score => {
+                // Get category-wise probabilities for this model
+                const categoryScores = categories.map((cat, idx) => {
+                    const prob = score.probs[idx];
+                    const config = categoryConfig[cat] || categoryConfig['Natural_Content'];
+                    return `
+                        <div class="flex items-center justify-between text-xs mb-2">
+                            <div class="flex items-center gap-2">
+                                <span>${config.emoji}</span>
+                                <span class="text-slate-600">${cat.replace('_', ' ')}</span>
+                            </div>
+                            <span class="font-semibold text-slate-700">${prob.toFixed(1)}%</span>
+                        </div>
+                        <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden mb-3">
+                            <div class="h-full bg-gradient-to-r ${config.color}" style="width: ${prob}%"></div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                            <span class="text-slate-800 font-semibold">${score.model.replace('best_ensemble_model_', 'Model ')}</span>
+                            <span class="text-green-600 font-bold text-lg">${score.confidence.toFixed(1)}%</span>
+                        </div>
+                        <div class="space-y-1">
+                            ${categoryScores}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function resetApp() {
+            selectedVideo = null;
+            selectionSection.classList.remove('hidden');
+            processingSection.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            selectedPreview.classList.add('hidden');
+            
+            // Deselect all cards
+            document.querySelectorAll('.video-card').forEach(c => {
+                c.classList.remove('selected');
+                c.querySelector('.check-icon').classList.add('hidden');
+            });
+            
+            hideError();
+        }
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+
+        // Load videos when page loads
+        loadVideos();
+    </script>
+</body>
+</html>
