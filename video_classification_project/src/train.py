@@ -54,6 +54,7 @@ import torch
 import torch.nn as nn
 from torch.amp import autocast              # FIX 1: updated non-deprecated AMP API
 from torch.cuda.amp import GradScaler       # GradScaler stays in torch.cuda.amp (torch < 2.3)
+from tqdm import tqdm                       # progress bar for epoch loops
 
 # ── psutil for CPU/RAM monitoring ─────────────────────────────────────
 try:
@@ -205,34 +206,21 @@ class HardwareMonitor:
         else:
             parts.append("CPU/RAM: psutil not available")
 
-        # ── GPU ───────────────────────────────────────────────────────
-        if PYNVML_AVAILABLE:
-            try:
-                handle   = pynvml.nvmlDeviceGetHandleByIndex(0)
-                util     = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                temp     = pynvml.nvmlDeviceGetTemperature(
-                    handle, pynvml.NVML_TEMPERATURE_GPU)
-                gpu_used_gb  = mem_info.used  / (1024 ** 3)
-                gpu_total_gb = mem_info.total / (1024 ** 3)
-                parts.append(
-                    f"GPU util {util.gpu:3d}%  "
-                    f"VRAM {gpu_used_gb:.1f}/{gpu_total_gb:.1f}GB  "
-                    f"Temp {temp}°C"
-                )
-            except Exception as e:
-                parts.append(f"GPU: pynvml error ({e})")
+        # ── GPU — torch.cuda (works on MIG partitions, no pynvml needed) ──
+        # pynvml fails on MIG partitions with "Not Supported".
+        # torch.cuda reports VRAM allocated/reserved directly from the
+        # CUDA runtime, which always works regardless of MIG configuration.
+        if torch.cuda.is_available():
+            allocated_gb = torch.cuda.memory_allocated(0)  / (1024 ** 3)
+            reserved_gb  = torch.cuda.memory_reserved(0)   / (1024 ** 3)
+            total_gb     = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            parts.append(
+                f"VRAM alloc {allocated_gb:.2f}GB  "
+                f"reserved {reserved_gb:.2f}GB  "
+                f"total {total_gb:.1f}GB"
+            )
         else:
-            # Fallback: torch reports VRAM only (no utilisation %)
-            if torch.cuda.is_available():
-                allocated = torch.cuda.memory_allocated(0) / (1024 ** 3)
-                reserved  = torch.cuda.memory_reserved(0)  / (1024 ** 3)
-                parts.append(
-                    f"GPU VRAM allocated {allocated:.1f}GB  "
-                    f"reserved {reserved:.1f}GB"
-                )
-            else:
-                parts.append("GPU: CUDA not available")
+            parts.append("GPU: CUDA not available")
 
         log_hw("  |  ".join(parts))
 
@@ -292,7 +280,7 @@ def load_checkpoint(path, model, optimizer, scheduler, scaler, device):
 # ══════════════════════════════════════════════════════════════════════
 
 def run_one_epoch(model, loader, criterion, optimizer,
-                  scaler, device, is_train):
+                  scaler, device, is_train, desc=''):
     """
     Runs one full pass over the dataset (train or val).
 
@@ -318,7 +306,11 @@ def run_one_epoch(model, loader, criterion, optimizer,
     total_correct = 0
     total_samples = 0
 
-    for tensors, labels in loader:
+    # Progress bar — shows batch-level loss and running accuracy per epoch
+    pbar = tqdm(loader, desc=desc, leave=False,
+                bar_format='{l_bar}{bar:30}{r_bar}')
+
+    for tensors, labels in pbar:
         tensors = tensors.to(device, non_blocking=True)
         labels  = labels.to(device,  non_blocking=True)
 
@@ -349,9 +341,14 @@ def run_one_epoch(model, loader, criterion, optimizer,
 
         # Accumulate stats
         preds          = logits.argmax(dim=1)
-        total_correct += (preds == labels).sum().item()
+        batch_correct  = (preds == labels).sum().item()
+        total_correct += batch_correct
         total_samples += labels.size(0)
         total_loss    += loss.item() * labels.size(0)
+
+        # Update progress bar with running stats
+        running_acc = total_correct / total_samples * 100.0
+        pbar.set_postfix(loss=f'{loss.item():.4f}', acc=f'{running_acc:.1f}%')
 
     avg_loss = total_loss  / total_samples
     accuracy = total_correct / total_samples * 100.0
@@ -392,7 +389,15 @@ def run_phase(phase_num, model, dataloaders, device,
     log(f"  patience   : {patience}")
     log("=" * 60)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)  # FIX 4: lower smoothing for small 4-class dataset
+    # IMPROVEMENT 2: weight Gaming class higher (index 2) to penalise
+    # misclassifications more — Gaming had the lowest accuracy at 81.9%.
+    # Weights map to: [Animation, Flat_Content, Gaming, Natural_Content]
+    class_weights = torch.tensor([1.0, 1.0, 1.3, 1.0]).to(device)
+
+    criterion = nn.CrossEntropyLoss(
+        weight          = class_weights,
+        label_smoothing = 0.05,          # FIX 4: lower smoothing for small 4-class dataset
+    )
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -433,12 +438,14 @@ def run_phase(phase_num, model, dataloaders, device,
         # Train
         train_loss, train_acc = run_one_epoch(
             model, dataloaders['train'], criterion,
-            optimizer, scaler, device, is_train=True)
+            optimizer, scaler, device, is_train=True,
+            desc=f'P{phase_num} E{epoch+1:02d}/{max_epochs} Train')
 
         # Validate
         val_loss, val_acc = run_one_epoch(
             model, dataloaders['val'], criterion,
-            optimizer, scaler, device, is_train=False)
+            optimizer, scaler, device, is_train=False,
+            desc=f'P{phase_num} E{epoch+1:02d}/{max_epochs} Val  ')
 
         # Step scheduler on val loss
         scheduler.step(val_loss)
@@ -658,6 +665,7 @@ def main():
         scaler    = None,   # not used in is_train=False branch
         device    = device,
         is_train  = False,
+        desc      = 'Test eval',
     )
     log(f"\nFinal TEST accuracy : {test_acc:.2f}%")
     log(f"Final TEST loss     : {test_loss:.4f}")

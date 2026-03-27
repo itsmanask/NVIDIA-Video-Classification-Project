@@ -2,41 +2,41 @@
   "checkpoint": "/workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt",
   "checkpoint_epoch": 3,
   "checkpoint_phase": 2,
-  "best_val_acc": 89.94169096209913,
-  "overall_test_acc": 90.3394,
+  "best_val_acc": 90.52478134110787,
+  "overall_test_acc": 91.3838,
   "total_videos": 383,
-  "correct": 346,
-  "wrong": 37,
+  "correct": 350,
+  "wrong": 33,
   "per_class_acc": {
-    "Animation": 87.6289,
+    "Animation": 90.7216,
     "Flat_Content": 93.5065,
-    "Gaming": 81.9048,
-    "Natural_Content": 99.0385
+    "Gaming": 85.7143,
+    "Natural_Content": 96.1538
   },
   "confusion_matrix": [
     [
-      85,
-      2,
-      8,
-      2
+      88,
+      1,
+      7,
+      1
     ],
     [
       4,
       72,
-      1,
-      0
+      0,
+      1
     ],
     [
-      8,
+      6,
+      3,
+      90,
+      6
+    ],
+    [
       2,
-      86,
-      9
-    ],
-    [
-      1,
       0,
-      0,
-      103
+      2,
+      100
     ]
   ],
   "class_order": [

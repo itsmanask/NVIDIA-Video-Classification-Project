@@ -37,6 +37,35 @@ from torch.utils.data import Dataset, DataLoader
 # ── FIX 4: Training augmentation transform ────────────────────────────
 # Operates directly on normalized tensors — shape (16, 3, 224, 224)
 # Applied ONLY to the training split (val/test get no augmentation)
+
+
+# IMPROVEMENT 1: safe brightness/contrast jitter for normalized tensors
+# Operates on normalized range [-2.12, 2.64] directly — no PIL needed.
+# Applied with prob=0.5 so half of samples train without colour shift.
+# clamp(-3, 3) keeps values within a safe margin of the normalized range.
+def augment_tensor(tensor):
+    """
+    Random brightness + contrast jitter on a normalized tensor.
+
+    Args:
+        tensor : FloatTensor of shape (16, 3, 224, 224)
+
+    Returns:
+        tensor : jittered FloatTensor, same shape, clamped to [-3, 3]
+
+    How it works (range-safe):
+        contrast  : multiplier sampled from [0.8, 1.2]  (± 20% scaling)
+        brightness: additive offset sampled from [-0.1, 0.1]
+        Applied consistently across all 16 frames per video.
+    """
+    if torch.rand(1).item() < 0.5:
+        contrast   = 1.0 + (torch.rand(1).item() - 0.5) * 0.4   # [0.8, 1.2]
+        brightness = (torch.rand(1).item() - 0.5) * 0.2          # [-0.1, 0.1]
+        tensor = tensor * contrast + brightness
+
+    return tensor.clamp(-3.0, 3.0)
+
+
 def train_transform(tensor):
     """
     Lightweight augmentation for training tensors.
@@ -50,13 +79,18 @@ def train_transform(tensor):
     Augmentations:
         1. Random horizontal flip (prob=0.5)
            Flips all 16 frames consistently across width (dim=-1)
-        2. Small Gaussian noise (std=0.01)
+        2. Safe brightness/contrast jitter (prob=0.5)  ← IMPROVEMENT 1
+           Contrast ±20%, brightness ±0.1, clamped to [-3, 3]
+        3. Small Gaussian noise (std=0.01)
            Adds subtle noise to prevent overfitting without
            distorting the normalized pixel distribution meaningfully
     """
     # FIX 4a: Random horizontal flip across width dimension
     if torch.rand(1).item() < 0.5:
         tensor = tensor.flip(-1).contiguous()   # flip width dim: (16,3,224,224)
+
+    # IMPROVEMENT 1: brightness/contrast jitter on normalized tensor
+    tensor = augment_tensor(tensor)
 
     # FIX 4b: Small Gaussian noise — magnitude kept very low (0.01)
     # so normalized range [-2.12, 2.64] is not meaningfully disturbed
