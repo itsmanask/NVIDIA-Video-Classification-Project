@@ -1,0 +1,57 @@
+[19:07:09] [INFO] ============================================================
+[19:07:09] [INFO] VIDEO CLASSIFIER — TEST SET EVALUATION
+[19:07:09] [INFO] ============================================================
+[19:07:09] [INFO] Device : cuda
+[19:07:09] [INFO] Checkpoint : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[19:07:09] [INFO] 
+Building model...
+[19:07:09] [INFO] Weights loaded from epoch 3 (Phase 2 best val acc: 89.94%)
+[19:07:09] [INFO] 
+Building test dataloader...
+[19:07:09] [INFO] Test samples  : 383
+[19:07:09] [INFO] Test batches  : 12
+[19:07:09] [INFO] 
+Running inference on test set...
+[19:07:15] [INFO] Inference complete in 5s
+[19:07:15] [INFO] 
+============================================================
+[19:07:15] [INFO] RESULTS
+[19:07:15] [INFO] ============================================================
+[19:07:15] [INFO] Overall test accuracy : 90.34%
+[19:07:15] [INFO] Total videos          : 383
+[19:07:15] [INFO] Correct               : 346
+[19:07:15] [INFO] Wrong                 : 37
+[19:07:15] [INFO] 
+Per-class accuracy:
+[19:07:15] [INFO]   Animation             87.63%  (85/97 correct)
+[19:07:15] [INFO]   Flat_Content          93.51%  (72/77 correct)
+[19:07:15] [INFO]   Gaming                81.90%  (86/105 correct)
+[19:07:15] [INFO]   Natural_Content       99.04%  (103/104 correct)
+[19:07:15] [INFO] 
+Confusion matrix (rows=true, cols=predicted):
+[19:07:15] [INFO]                         Animatio  Flat_Con    Gaming  Natural_
+[19:07:15] [INFO]   Animation                   85         2         8         2
+[19:07:15] [INFO]   Flat_Content                 4        72         1         0
+[19:07:15] [INFO]   Gaming                       8         2        86         9
+[19:07:15] [INFO]   Natural_Content              1         0         0       103
+[19:07:15] [INFO] 
+Confusion matrix plot saved : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/confusion_matrix.png
+[19:07:15] [INFO] Misclassified videos saved  : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/misclassified_videos.csv
+[19:07:15] [INFO]   (37 videos misclassified, sorted by confidence descending)
+[19:07:15] [INFO] 
+Detailed confusion breakdown (what each class gets confused with):
+[19:07:15] [INFO]   Animation            → Gaming: 8 (8.2%)  |  Flat_Content: 2 (2.1%)  |  Natural_Content: 2 (2.1%)
+[19:07:15] [INFO]   Flat_Content         → Animation: 4 (5.2%)  |  Gaming: 1 (1.3%)
+[19:07:15] [INFO]   Gaming               → Natural_Content: 9 (8.6%)  |  Animation: 8 (7.6%)  |  Flat_Content: 2 (1.9%)
+[19:07:15] [INFO]   Natural_Content      → Animation: 1 (1.0%)
+[19:07:15] [INFO] 
+Full results saved          : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/evaluate_results.json
+[19:07:15] [INFO] 
+============================================================
+[19:07:15] [INFO] EVALUATION COMPLETE
+[19:07:15] [INFO] ============================================================
+[19:07:15] [INFO]   Overall test accuracy : 90.34%
+[19:07:15] [INFO]   Confusion matrix      : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/confusion_matrix.png
+[19:07:15] [INFO]   Misclassified videos  : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/misclassified_videos.csv
+[19:07:15] [INFO]   Full results JSON     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/evaluate_results.json
+[19:07:15] [INFO] ============================================================
