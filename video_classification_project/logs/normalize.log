@@ -1,0 +1,130 @@
+[09:18:45] [INFO] ============================================================
+[09:18:45] [INFO] FRAME NORMALIZATION
+[09:18:45] [INFO] ============================================================
+[09:18:45] [INFO] Input          : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames_resized
+[09:18:45] [INFO] Output         : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames_normalized
+[09:18:45] [INFO] Mean           : [0.48500001430511475, 0.4560000002384186, 0.4059999883174896]
+[09:18:45] [INFO] Std            : [0.2290000021457672, 0.2240000069141388, 0.22499999403953552]
+[09:18:45] [INFO] Output shape   : (16, 3, 224, 224)
+[09:18:45] [INFO] Output format  : .pt tensor files
+[09:18:45] [INFO] ============================================================
+[09:18:45] [INFO] 
+Counting total videos...
+[09:18:45] [INFO] Total videos to process: 3522
+[09:18:45] [INFO] 
+############################################################
+[09:18:45] [INFO] SPLIT: TRAIN
+[09:18:45] [INFO] ############################################################
+[09:18:45] [INFO] 
+──────────────────────────────────────────────────
+[09:18:45] [INFO] train/Animation
+[09:18:56] [INFO]   ── Progress: 200/3522 (5.7%) | Elapsed: 0m 11s
+[09:19:07] [INFO]   ── Progress: 400/3522 (11.4%) | Elapsed: 0m 21s
+[09:19:18] [INFO]   ── Progress: 600/3522 (17.0%) | Elapsed: 0m 32s
+[09:19:19] [INFO]   train/Animation DONE: success=633 errors=0
+[09:19:19] [INFO] 
+──────────────────────────────────────────────────
+[09:19:19] [INFO] train/Flat_Content
+[09:19:28] [INFO]   ── Progress: 800/3522 (22.7%) | Elapsed: 0m 43s
+[09:19:38] [INFO]   ── Progress: 1000/3522 (28.4%) | Elapsed: 0m 53s
+[09:19:45] [INFO]   train/Flat_Content DONE: success=501 errors=0
+[09:19:45] [INFO] 
+──────────────────────────────────────────────────
+[09:19:45] [INFO] train/Gaming
+[09:19:48] [INFO]   ── Progress: 1200/3522 (34.1%) | Elapsed: 1m 3s
+[09:20:00] [INFO]   ── Progress: 1400/3522 (39.8%) | Elapsed: 1m 14s
+[09:20:11] [INFO]   ── Progress: 1600/3522 (45.4%) | Elapsed: 1m 26s
+[09:20:22] [INFO]   ── Progress: 1800/3522 (51.1%) | Elapsed: 1m 37s
+[09:20:22] [INFO]   train/Gaming DONE: success=672 errors=0
+[09:20:22] [INFO] 
+──────────────────────────────────────────────────
+[09:20:22] [INFO] train/Natural_Content
+[09:20:33] [INFO]   ── Progress: 2000/3522 (56.8%) | Elapsed: 1m 48s
+[09:20:44] [INFO]   ── Progress: 2200/3522 (62.5%) | Elapsed: 1m 59s
+[09:20:55] [INFO]   ── Progress: 2400/3522 (68.1%) | Elapsed: 2m 10s
+[09:20:58] [INFO]   train/Natural_Content DONE: success=645 errors=0
+[09:20:58] [INFO] 
+############################################################
+[09:20:58] [INFO] SPLIT: VAL
+[09:20:58] [INFO] ############################################################
+[09:20:58] [INFO] 
+──────────────────────────────────────────────────
+[09:20:58] [INFO] val/Animation
+[09:21:06] [INFO]   ── Progress: 2600/3522 (73.8%) | Elapsed: 2m 21s
+[09:21:08] [INFO]   val/Animation DONE: success=179 errors=0
+[09:21:08] [INFO] 
+──────────────────────────────────────────────────
+[09:21:08] [INFO] val/Flat_Content
+[09:21:15] [INFO]   val/Flat_Content DONE: success=139 errors=0
+[09:21:15] [INFO] 
+──────────────────────────────────────────────────
+[09:21:15] [INFO] val/Gaming
+[09:21:17] [INFO]   ── Progress: 2800/3522 (79.5%) | Elapsed: 2m 32s
+[09:21:25] [INFO]   val/Gaming DONE: success=188 errors=0
+[09:21:25] [INFO] 
+──────────────────────────────────────────────────
+[09:21:25] [INFO] val/Natural_Content
+[09:21:28] [INFO]   ── Progress: 3000/3522 (85.2%) | Elapsed: 2m 42s
+[09:21:35] [INFO]   val/Natural_Content DONE: success=181 errors=0
+[09:21:35] [INFO] 
+############################################################
+[09:21:35] [INFO] SPLIT: TEST
+[09:21:35] [INFO] ############################################################
+[09:21:35] [INFO] 
+──────────────────────────────────────────────────
+[09:21:35] [INFO] test/Animation
+[09:21:39] [INFO]   ── Progress: 3200/3522 (90.9%) | Elapsed: 2m 53s
+[09:21:41] [INFO]   test/Animation DONE: success=97 errors=0
+[09:21:41] [INFO] 
+──────────────────────────────────────────────────
+[09:21:41] [INFO] test/Flat_Content
+[09:21:45] [INFO]   test/Flat_Content DONE: success=78 errors=0
+[09:21:45] [INFO] 
+──────────────────────────────────────────────────
+[09:21:45] [INFO] test/Gaming
+[09:21:49] [INFO]   ── Progress: 3400/3522 (96.5%) | Elapsed: 3m 4s
+[09:21:50] [INFO]   test/Gaming DONE: success=105 errors=0
+[09:21:50] [INFO] 
+──────────────────────────────────────────────────
+[09:21:50] [INFO] test/Natural_Content
+[09:21:56] [INFO]   test/Natural_Content DONE: success=104 errors=0
+[09:21:56] [INFO] 
+============================================================
+[09:21:56] [INFO] NORMALIZATION COMPLETE
+[09:21:56] [INFO] ============================================================
+[09:21:56] [INFO] Total time  : 3m 11s
+[09:21:56] [INFO] Processed   : 3522
+[09:21:56] [INFO] Success     : 3522
+[09:21:56] [INFO] No frames   : 0
+[09:21:56] [INFO] Read error  : 0
+[09:21:56] [INFO] Wrong size  : 0
+[09:21:56] [INFO] 
+Output      : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames_normalized
+[09:21:56] [INFO] Log file    : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/normalize.log
+[09:21:56] [INFO] Stats saved : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/normalize_stats.json
+[09:21:56] [INFO] 
+────────────────────────────────────────────────────────────
+[09:21:56] [INFO] OUTPUT VERIFICATION
+[09:21:56] [INFO] ────────────────────────────────────────────────────────────
+[09:21:56] [INFO]   train/Animation            shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:56] [INFO]   train/Flat_Content         shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:56] [INFO]   train/Gaming               shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:56] [INFO]   train/Natural_Content      shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   val/Animation            shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   val/Flat_Content         shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   val/Gaming               shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   val/Natural_Content      shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   test/Animation            shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   test/Flat_Content         shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   test/Gaming               shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO]   test/Natural_Content      shape:torch.Size([16, 3, 224, 224]) range:[-2.12,2.64] nan:False PASS
+[09:21:57] [INFO] 
+ALL TENSOR CHECKS PASSED
+[09:21:57] [INFO] 
+────────────────────────────────────────────────────────────
+[09:21:57] [INFO] NEXT STEPS:
+[09:21:57] [INFO] ────────────────────────────────────────────────────────────
+[09:21:57] [INFO] 1. Run normalization verification:
+[09:21:57] [INFO]    python verification/verify_normalization.py
+[09:21:57] [INFO] 2. Only proceed to model training after verification passes
+[09:21:57] [INFO] ────────────────────────────────────────────────────────────

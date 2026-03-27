@@ -1,0 +1,43 @@
+Loading pretrained ResNet18...
+============================================================
+STATIC OVERLAP CHECK — FULL DATASET
+============================================================
+Model          : Pretrained ResNet18 (no fine-tuning)
+Videos sampled : 150 per class
+Frames used    : 4 per video
+Feature size   : 512 dimensions
+
+Extracting features: Animation
+  Extracted: 150 feature vectors
+
+Extracting features: Flat_Content
+  Extracted: 150 feature vectors
+
+Extracting features: Gaming
+  Extracted: 150 feature vectors
+
+Extracting features: Natural_Content
+  Extracted: 150 feature vectors
+
+Total feature matrix: (600, 512)
+
+Running PCA...
+  Top 10 PCs explain: 46.4% of variance
+Running t-SNE (this takes a minute)...
+Running LDA...
+
+Plot saved: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/static_overlap.png
+
+============================================================
+LDA CLASS SEPARATION SCORES
+============================================================
+LDA score = how well a linear classifier separates classes
+using only CNN spatial features from pretrained ResNet18
+
+SVM cross-validation on CNN features:
+  Per fold : ['0.850', '0.792', '0.917', '0.858', '0.867']
+  Mean     : 0.857
+  Std      : 0.040
+
+✅ STRONG spatial separation — CNN alone likely sufficient
+   Temporal modeling is a bonus, not a requirement

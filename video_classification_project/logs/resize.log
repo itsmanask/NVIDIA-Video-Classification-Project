@@ -1,0 +1,165 @@
+[06:12:20] [INFO] ============================================================
+[06:12:20] [INFO] FRAME RESIZE
+[06:12:20] [INFO] ============================================================
+[06:12:20] [INFO] Input          : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames
+[06:12:20] [INFO] Output         : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames_resized
+[06:12:20] [INFO] Target size    : (224, 224)
+[06:12:20] [INFO] Interpolation  : INTER_LINEAR
+[06:12:20] [INFO] ============================================================
+[06:12:20] [INFO] 
+Counting total frames...
+[06:12:20] [INFO] Total frames to resize: 56307
+[06:12:20] [INFO] 
+############################################################
+[06:12:20] [INFO] SPLIT: TRAIN
+[06:12:20] [INFO] ############################################################
+[06:12:20] [INFO] 
+──────────────────────────────────────────────────
+[06:12:20] [INFO] train/Animation
+[06:12:31] [INFO]   ── Progress: 1000/56307 (1.8%) | Elapsed: 0m 10s
+[06:12:38] [INFO]   ── Progress: 2000/56307 (3.6%) | Elapsed: 0m 17s
+[06:12:44] [INFO]   ── Progress: 3000/56307 (5.3%) | Elapsed: 0m 24s
+[06:12:51] [INFO]   ── Progress: 4000/56307 (7.1%) | Elapsed: 0m 31s
+[06:12:58] [INFO]   ── Progress: 5000/56307 (8.9%) | Elapsed: 0m 37s
+[06:13:04] [INFO]   ── Progress: 6000/56307 (10.7%) | Elapsed: 0m 44s
+[06:13:14] [INFO]   ── Progress: 7000/56307 (12.4%) | Elapsed: 0m 54s
+[06:13:27] [INFO]   ── Progress: 8000/56307 (14.2%) | Elapsed: 1m 7s
+[06:13:41] [INFO]   ── Progress: 9000/56307 (16.0%) | Elapsed: 1m 21s
+[06:13:49] [INFO]   ── Progress: 10000/56307 (17.8%) | Elapsed: 1m 29s
+[06:13:50] [INFO]   train/Animation DONE: success=10122 failed=0
+[06:13:50] [INFO] 
+──────────────────────────────────────────────────
+[06:13:50] [INFO] train/Flat_Content
+[06:13:55] [INFO]   ── Progress: 11000/56307 (19.5%) | Elapsed: 1m 35s
+[06:14:02] [INFO]   ── Progress: 12000/56307 (21.3%) | Elapsed: 1m 41s
+[06:14:09] [INFO]   ── Progress: 13000/56307 (23.1%) | Elapsed: 1m 49s
+[06:14:15] [INFO]   ── Progress: 14000/56307 (24.9%) | Elapsed: 1m 55s
+[06:14:21] [INFO]   ── Progress: 15000/56307 (26.6%) | Elapsed: 2m 1s
+[06:14:27] [INFO]   ── Progress: 16000/56307 (28.4%) | Elapsed: 2m 6s
+[06:14:33] [INFO]   ── Progress: 17000/56307 (30.2%) | Elapsed: 2m 12s
+[06:14:39] [INFO]   ── Progress: 18000/56307 (32.0%) | Elapsed: 2m 18s
+[06:14:39] [INFO]   train/Flat_Content DONE: success=8008 failed=0
+[06:14:39] [INFO] 
+──────────────────────────────────────────────────
+[06:14:39] [INFO] train/Gaming
+[06:14:47] [INFO]   ── Progress: 19000/56307 (33.7%) | Elapsed: 2m 27s
+[06:14:56] [INFO]   ── Progress: 20000/56307 (35.5%) | Elapsed: 2m 36s
+[06:15:04] [INFO]   ── Progress: 21000/56307 (37.3%) | Elapsed: 2m 43s
+[06:15:12] [INFO]   ── Progress: 22000/56307 (39.1%) | Elapsed: 2m 51s
+[06:15:19] [INFO]   ── Progress: 23000/56307 (40.8%) | Elapsed: 2m 58s
+[06:15:26] [INFO]   ── Progress: 24000/56307 (42.6%) | Elapsed: 3m 5s
+[06:15:34] [INFO]   ── Progress: 25000/56307 (44.4%) | Elapsed: 3m 13s
+[06:15:41] [INFO]   ── Progress: 26000/56307 (46.2%) | Elapsed: 3m 20s
+[06:15:48] [INFO]   ── Progress: 27000/56307 (48.0%) | Elapsed: 3m 28s
+[06:15:55] [INFO]   ── Progress: 28000/56307 (49.7%) | Elapsed: 3m 35s
+[06:16:02] [INFO]   train/Gaming DONE: success=10734 failed=0
+[06:16:02] [INFO] 
+──────────────────────────────────────────────────
+[06:16:02] [INFO] train/Natural_Content
+[06:16:03] [INFO]   ── Progress: 29000/56307 (51.5%) | Elapsed: 3m 42s
+[06:16:10] [INFO]   ── Progress: 30000/56307 (53.3%) | Elapsed: 3m 49s
+[06:16:17] [INFO]   ── Progress: 31000/56307 (55.1%) | Elapsed: 3m 56s
+[06:16:24] [INFO]   ── Progress: 32000/56307 (56.8%) | Elapsed: 4m 3s
+[06:16:31] [INFO]   ── Progress: 33000/56307 (58.6%) | Elapsed: 4m 10s
+[06:16:38] [INFO]   ── Progress: 34000/56307 (60.4%) | Elapsed: 4m 18s
+[06:16:46] [INFO]   ── Progress: 35000/56307 (62.2%) | Elapsed: 4m 25s
+[06:16:53] [INFO]   ── Progress: 36000/56307 (63.9%) | Elapsed: 4m 32s
+[06:17:00] [INFO]   ── Progress: 37000/56307 (65.7%) | Elapsed: 4m 40s
+[06:17:08] [INFO]   ── Progress: 38000/56307 (67.5%) | Elapsed: 4m 47s
+[06:17:15] [INFO]   ── Progress: 39000/56307 (69.3%) | Elapsed: 4m 54s
+[06:17:16] [INFO]   train/Natural_Content DONE: success=10313 failed=0
+[06:17:16] [INFO] 
+############################################################
+[06:17:16] [INFO] SPLIT: VAL
+[06:17:16] [INFO] ############################################################
+[06:17:16] [INFO] 
+──────────────────────────────────────────────────
+[06:17:16] [INFO] val/Animation
+[06:17:21] [INFO]   ── Progress: 40000/56307 (71.0%) | Elapsed: 5m 1s
+[06:17:28] [INFO]   ── Progress: 41000/56307 (72.8%) | Elapsed: 5m 7s
+[06:17:34] [INFO]   ── Progress: 42000/56307 (74.6%) | Elapsed: 5m 14s
+[06:17:35] [INFO]   val/Animation DONE: success=2864 failed=0
+[06:17:35] [INFO] 
+──────────────────────────────────────────────────
+[06:17:35] [INFO] val/Flat_Content
+[06:17:40] [INFO]   ── Progress: 43000/56307 (76.4%) | Elapsed: 5m 20s
+[06:17:45] [INFO]   ── Progress: 44000/56307 (78.1%) | Elapsed: 5m 25s
+[06:17:47] [INFO]   val/Flat_Content DONE: success=2224 failed=0
+[06:17:47] [INFO] 
+──────────────────────────────────────────────────
+[06:17:47] [INFO] val/Gaming
+[06:17:52] [INFO]   ── Progress: 45000/56307 (79.9%) | Elapsed: 5m 32s
+[06:17:59] [INFO]   ── Progress: 46000/56307 (81.7%) | Elapsed: 5m 39s
+[06:18:07] [INFO]   ── Progress: 47000/56307 (83.5%) | Elapsed: 5m 46s
+[06:18:09] [INFO]   val/Gaming DONE: success=3004 failed=0
+[06:18:09] [INFO] 
+──────────────────────────────────────────────────
+[06:18:09] [INFO] val/Natural_Content
+[06:18:14] [INFO]   ── Progress: 48000/56307 (85.2%) | Elapsed: 5m 53s
+[06:18:21] [INFO]   ── Progress: 49000/56307 (87.0%) | Elapsed: 6m 1s
+[06:18:28] [INFO]   ── Progress: 50000/56307 (88.8%) | Elapsed: 6m 8s
+[06:18:30] [INFO]   val/Natural_Content DONE: success=2896 failed=0
+[06:18:30] [INFO] 
+############################################################
+[06:18:30] [INFO] SPLIT: TEST
+[06:18:30] [INFO] ############################################################
+[06:18:30] [INFO] 
+──────────────────────────────────────────────────
+[06:18:30] [INFO] test/Animation
+[06:18:35] [INFO]   ── Progress: 51000/56307 (90.6%) | Elapsed: 6m 15s
+[06:18:40] [INFO]   test/Animation DONE: success=1552 failed=0
+[06:18:40] [INFO] 
+──────────────────────────────────────────────────
+[06:18:40] [INFO] test/Flat_Content
+[06:18:41] [INFO]   ── Progress: 52000/56307 (92.4%) | Elapsed: 6m 21s
+[06:18:46] [INFO]   test/Flat_Content DONE: success=1246 failed=0
+[06:18:46] [INFO] 
+──────────────────────────────────────────────────
+[06:18:46] [INFO] test/Gaming
+[06:18:47] [INFO]   ── Progress: 53000/56307 (94.1%) | Elapsed: 6m 26s
+[06:18:54] [INFO]   ── Progress: 54000/56307 (95.9%) | Elapsed: 6m 33s
+[06:18:59] [INFO]   test/Gaming DONE: success=1680 failed=0
+[06:18:59] [INFO] 
+──────────────────────────────────────────────────
+[06:18:59] [INFO] test/Natural_Content
+[06:19:01] [INFO]   ── Progress: 55000/56307 (97.7%) | Elapsed: 6m 40s
+[06:19:08] [INFO]   ── Progress: 56000/56307 (99.5%) | Elapsed: 6m 48s
+[06:19:10] [INFO]   test/Natural_Content DONE: success=1664 failed=0
+[06:19:10] [INFO] 
+============================================================
+[06:19:10] [INFO] RESIZE COMPLETE
+[06:19:10] [INFO] ============================================================
+[06:19:10] [INFO] Total time  : 6m 50s
+[06:19:10] [INFO] Processed   : 56307
+[06:19:10] [INFO] Success     : 56307
+[06:19:10] [INFO] Failed      : 0
+[06:19:10] [INFO] 
+Output      : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames_resized
+[06:19:10] [INFO] Log file    : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/resize.log
+[06:19:10] [INFO] Stats saved : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/resize_stats.json
+[06:19:10] [INFO] 
+────────────────────────────────────────────────────────────
+[06:19:10] [INFO] OUTPUT VERIFICATION
+[06:19:10] [INFO] ────────────────────────────────────────────────────────────
+[06:19:10] [INFO]   train/Animation            shape: (224,224,3) PASS
+[06:19:10] [INFO]   train/Flat_Content         shape: (224,224,3) PASS
+[06:19:10] [INFO]   train/Gaming               shape: (224,224,3) PASS
+[06:19:10] [INFO]   train/Natural_Content      shape: (224,224,3) PASS
+[06:19:10] [INFO]   val/Animation            shape: (224,224,3) PASS
+[06:19:10] [INFO]   val/Flat_Content         shape: (224,224,3) PASS
+[06:19:10] [INFO]   val/Gaming               shape: (224,224,3) PASS
+[06:19:10] [INFO]   val/Natural_Content      shape: (224,224,3) PASS
+[06:19:10] [INFO]   test/Animation            shape: (224,224,3) PASS
+[06:19:10] [INFO]   test/Flat_Content         shape: (224,224,3) PASS
+[06:19:10] [INFO]   test/Gaming               shape: (224,224,3) PASS
+[06:19:10] [INFO]   test/Natural_Content      shape: (224,224,3) PASS
+[06:19:10] [INFO] 
+ALL SHAPE CHECKS PASSED
+[06:19:10] [INFO] 
+────────────────────────────────────────────────────────────
+[06:19:10] [INFO] NEXT STEPS:
+[06:19:10] [INFO] ────────────────────────────────────────────────────────────
+[06:19:10] [INFO] 1. Run resize verification:
+[06:19:10] [INFO]    python verification/verify_resize.py
+[06:19:10] [INFO] 2. Only proceed to normalization after verification passes
+[06:19:10] [INFO] ────────────────────────────────────────────────────────────

@@ -1,0 +1,463 @@
+[12:46:11] [INFO] ============================================================
+[12:46:11] [INFO] FULL DATASET FRAME EXTRACTION
+[12:46:11] [INFO] ============================================================
+[12:46:11] [INFO] Base dir     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project
+[12:46:11] [INFO] Raw data     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/raw
+[12:46:11] [INFO] Output       : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames
+[12:46:11] [INFO] Splits       : ['train', 'val', 'test']
+[12:46:11] [INFO] Classes      : ['Animation', 'Flat_Content', 'Gaming', 'Natural_Content']
+[12:46:11] [INFO] Frames       : 16 per video
+[12:46:11] [INFO] Candidates   : 48 before filtering
+[12:46:11] [INFO] Edge skip    : 10%
+[12:46:11] [INFO] Black thresh : 25
+[12:46:11] [INFO] ============================================================
+[12:46:11] [INFO] 
+Counting total videos...
+[12:46:12] [INFO] Total videos to process: 3531
+[12:46:12] [INFO] 
+Breakdown per split/class:
+[12:46:12] [INFO]   train/Animation           : 633
+[12:46:12] [INFO]   train/Flat_Content        : 501
+[12:46:12] [INFO]   train/Gaming              : 676
+[12:46:12] [INFO]   train/Natural_Content     : 646
+[12:46:12] [INFO]   val/Animation           : 179
+[12:46:12] [INFO]   val/Flat_Content        : 141
+[12:46:12] [INFO]   val/Gaming              : 190
+[12:46:12] [INFO]   val/Natural_Content     : 181
+[12:46:12] [INFO]   test/Animation           : 97
+[12:46:12] [INFO]   test/Flat_Content        : 78
+[12:46:12] [INFO]   test/Gaming              : 105
+[12:46:12] [INFO]   test/Natural_Content     : 104
+[12:46:12] [INFO] 
+############################################################
+[12:46:12] [INFO] SPLIT: TRAIN
+[12:46:12] [INFO] ############################################################
+[12:46:12] [INFO] 
+──────────────────────────────────────────────────
+[12:46:12] [INFO] train/Animation
+[12:46:12] [INFO] Subcategories: ['Animation', 'Bleach', 'Cartoon', 'Dragon Ball', 'Lego minifigure', 'Naruto', 'One Piece', 'Sonic the Hedgehog', 'The Walt Disney Company']
+[12:46:12] [INFO]   Animation: 150 videos
+[12:47:04] [INFO]   ── Progress: 50/3531 (1.4%) | Elapsed: 0m 52s
+[12:47:51] [INFO]   ── Progress: 100/3531 (2.8%) | Elapsed: 1m 39s
+[12:47:52] [WARN]     WARN_FEW_GOOD : Transformers Prime Megatron vs The Insecticon HD.m (10 frames)
+[12:48:32] [INFO]   ── Progress: 150/3531 (4.2%) | Elapsed: 2m 20s
+[12:48:33] [INFO]   Bleach: 4 videos
+[12:48:35] [INFO]   Cartoon: 375 videos
+[12:49:13] [INFO]   ── Progress: 200/3531 (5.7%) | Elapsed: 3m 1s
+[12:49:59] [INFO]   ── Progress: 250/3531 (7.1%) | Elapsed: 3m 47s
+[12:50:41] [INFO]   ── Progress: 300/3531 (8.5%) | Elapsed: 4m 29s
+[12:51:22] [INFO]   ── Progress: 350/3531 (9.9%) | Elapsed: 5m 10s
+[12:52:04] [INFO]   ── Progress: 400/3531 (11.3%) | Elapsed: 5m 52s
+[12:52:48] [INFO]   ── Progress: 450/3531 (12.7%) | Elapsed: 6m 36s
+[12:53:30] [INFO]   ── Progress: 500/3531 (14.2%) | Elapsed: 7m 18s
+[12:53:59] [INFO]   Dragon Ball: 17 videos
+[12:54:15] [INFO]   Lego minifigure: 21 videos
+[12:54:18] [INFO]   ── Progress: 550/3531 (15.6%) | Elapsed: 8m 6s
+[12:54:38] [INFO]   Naruto: 29 videos
+[12:55:05] [INFO]   One Piece: 6 videos
+[12:55:08] [INFO]   ── Progress: 600/3531 (17.0%) | Elapsed: 8m 56s
+[12:55:10] [INFO]   Sonic the Hedgehog: 18 videos
+[12:55:26] [INFO]   The Walt Disney Company: 13 videos
+[12:55:29] [WARN]     WARN_ALL_BLACK: Celebrate the Magic - Villains edition.mp4
+[12:55:39] [INFO] 
+  train/Animation DONE:
+[12:55:39] [INFO]     success       : 631
+[12:55:39] [INFO]     warn_few_good : 1
+[12:55:39] [INFO]     warn_all_black: 1
+[12:55:39] [INFO]     skip_short    : 0
+[12:55:39] [INFO]     fail_open     : 0
+[12:55:39] [INFO]     fail_read     : 0
+[12:55:39] [INFO] 
+──────────────────────────────────────────────────
+[12:55:39] [INFO] train/Flat_Content
+[12:55:39] [INFO] Subcategories: ['Chart', 'Map', 'Poster', 'Screencast', 'Text', 'Website']
+[12:55:39] [INFO]   Chart: 91 videos
+[12:55:53] [INFO]   ── Progress: 650/3531 (18.4%) | Elapsed: 9m 41s
+[12:56:37] [INFO]   ── Progress: 700/3531 (19.8%) | Elapsed: 10m 25s
+[12:56:58] [INFO]   Map: 82 videos
+[12:57:24] [INFO]   ── Progress: 750/3531 (21.2%) | Elapsed: 11m 12s
+[12:58:15] [INFO]   ── Progress: 800/3531 (22.7%) | Elapsed: 12m 3s
+[12:58:23] [INFO]   Poster: 11 videos
+[12:58:33] [INFO]   Screencast: 50 videos
+[12:59:02] [INFO]   ── Progress: 850/3531 (24.1%) | Elapsed: 12m 50s
+[12:59:18] [INFO]   Text: 51 videos
+[12:59:18] [WARN]     WARN_ALL_BLACK: Alessandra Amoroso - Non devi perdermi (lyrics vid
+[12:59:28] [WARN]     WARN_ALL_BLACK: Dear jack - L_amore ? il mio destino Testo (Lyric 
+[12:59:44] [WARN]     WARN_FEW_GOOD : Sigla Completa - Digimon (Testo).mp4 (8 frames)
+[12:59:45] [INFO]   ── Progress: 900/3531 (25.5%) | Elapsed: 13m 33s
+[13:00:01] [INFO]   Website: 216 videos
+[13:00:27] [INFO]   ── Progress: 950/3531 (26.9%) | Elapsed: 14m 15s
+[13:01:11] [INFO]   ── Progress: 1000/3531 (28.3%) | Elapsed: 14m 58s
+[13:01:53] [INFO]   ── Progress: 1050/3531 (29.7%) | Elapsed: 15m 41s
+[13:02:37] [INFO]   ── Progress: 1100/3531 (31.2%) | Elapsed: 16m 25s
+[13:03:08] [INFO] 
+  train/Flat_Content DONE:
+[13:03:08] [INFO]     success       : 498
+[13:03:08] [INFO]     warn_few_good : 1
+[13:03:08] [INFO]     warn_all_black: 2
+[13:03:08] [INFO]     skip_short    : 0
+[13:03:08] [INFO]     fail_open     : 0
+[13:03:08] [INFO]     fail_read     : 0
+[13:03:08] [INFO] 
+──────────────────────────────────────────────────
+[13:03:08] [INFO] train/Gaming
+[13:03:08] [INFO] Subcategories: ['Action-adventure game', 'Battlefield', 'Call of Duty', 'FIFA 15', 'Games', 'Grand Theft Auto', 'Grand Theft Auto V', 'League of Legends', 'Minecraft', 'RuneScape', 'Video game', 'World of Warcraft']
+[13:03:08] [INFO]   Action-adventure game: 154 videos
+[13:03:26] [INFO]   ── Progress: 1150/3531 (32.6%) | Elapsed: 17m 14s
+[13:04:24] [INFO]   ── Progress: 1200/3531 (34.0%) | Elapsed: 18m 12s
+[13:05:22] [INFO]   ── Progress: 1250/3531 (35.4%) | Elapsed: 19m 10s
+[13:06:05] [INFO]   Battlefield: 4 videos
+[13:06:10] [INFO]   Call of Duty: 32 videos
+[13:06:18] [INFO]   ── Progress: 1300/3531 (36.8%) | Elapsed: 20m 6s
+[13:06:47] [INFO]   FIFA 15: 3 videos
+[13:06:50] [INFO]   Games: 207 videos
+[13:07:15] [INFO]   ── Progress: 1350/3531 (38.2%) | Elapsed: 21m 3s
+[13:07:27] [WARN]     WARN_FEW_GOOD : Cool Bits - Luigi_s Mansion_s Hidden Menu Messages (14 frames)
+[13:08:09] [INFO]   ── Progress: 1400/3531 (39.6%) | Elapsed: 21m 57s
+[13:09:04] [INFO]   ── Progress: 1450/3531 (41.1%) | Elapsed: 22m 52s
+[13:09:37] [WARN]     WARN_FEW_GOOD : StarCraft 2 Cutscene - A Better Tomorrow.mp4 (10 frames)
+[13:09:40] [WARN]     WARN_FEW_GOOD : The Last Door Prologue - Trailer horror game Gamep (1 frames)
+[13:09:57] [INFO]   ── Progress: 1500/3531 (42.5%) | Elapsed: 23m 45s
+[13:10:35] [INFO]   Grand Theft Auto: 6 videos
+[13:10:43] [INFO]   Grand Theft Auto V: 16 videos
+[13:10:54] [INFO]   ── Progress: 1550/3531 (43.9%) | Elapsed: 24m 42s
+[13:11:02] [INFO]   League of Legends: 4 videos
+[13:11:07] [INFO]   Minecraft: 26 videos
+[13:11:38] [INFO]   RuneScape: 4 videos
+[13:11:42] [INFO]   Video game: 204 videos
+[13:11:51] [WARN]     WARN_FEW_GOOD : Amnesia The Dark Descent? Water Monster.mp4 (2 frames)
+[13:11:51] [INFO]   ── Progress: 1600/3531 (45.3%) | Elapsed: 25m 39s
+[13:12:24] [WARN]     WARN_FEW_GOOD : DQMSL ? ????????????????? ? 78??.mp4 (1 frames)
+[13:12:49] [INFO]   ── Progress: 1650/3531 (46.7%) | Elapsed: 26m 37s
+[13:13:42] [INFO]   ── Progress: 1700/3531 (48.1%) | Elapsed: 27m 30s
+[13:13:58] [WARN]     WARN_FEW_GOOD : Radar-Hack (Alpha) ? ?????-??? (?????).mp4 (12 frames)
+[13:14:36] [INFO]   ── Progress: 1750/3531 (49.6%) | Elapsed: 28m 24s
+[13:15:23] [WARN]     WARN_FEW_GOOD : ? Runescape Money Guide ? 300k + an hour  ?No skil (10 frames)
+[13:15:24] [INFO]   World of Warcraft: 16 videos
+[13:15:30] [WARN]     WARN_FEW_GOOD : Getting to Vaelan - Seal of Ascension.mp4 (1 frames)
+[13:15:30] [INFO]   ── Progress: 1800/3531 (51.0%) | Elapsed: 29m 18s
+[13:15:42] [INFO] 
+  train/Gaming DONE:
+[13:15:42] [INFO]     success       : 668
+[13:15:42] [INFO]     warn_few_good : 8
+[13:15:42] [INFO]     warn_all_black: 0
+[13:15:42] [INFO]     skip_short    : 0
+[13:15:42] [INFO]     fail_open     : 0
+[13:15:42] [INFO]     fail_read     : 0
+[13:15:42] [INFO] 
+──────────────────────────────────────────────────
+[13:15:42] [INFO] train/Natural_Content
+[13:15:42] [INFO] Subcategories: ['Animal', 'Bird', 'Cat', 'Chicken', 'Dog', 'Farm', 'Fish', 'Fishing', 'Garden', 'Horse', 'Nature', 'Outdoor recreation', 'Pet', 'Plant', 'Tree', 'Wildlife']
+[13:15:42] [INFO]   Animal: 175 videos
+[13:16:21] [INFO]   ── Progress: 1850/3531 (52.4%) | Elapsed: 30m 9s
+[13:17:12] [INFO]   ── Progress: 1900/3531 (53.8%) | Elapsed: 31m 0s
+[13:18:04] [INFO]   ── Progress: 1950/3531 (55.2%) | Elapsed: 31m 52s
+[13:18:39] [INFO]   Bird: 23 videos
+[13:18:54] [INFO]   ── Progress: 2000/3531 (56.6%) | Elapsed: 32m 42s
+[13:19:03] [INFO]   Cat: 15 videos
+[13:19:18] [INFO]   Chicken: 4 videos
+[13:19:22] [INFO]   Dog: 39 videos
+[13:19:48] [INFO]   ── Progress: 2050/3531 (58.1%) | Elapsed: 33m 36s
+[13:21:01] [INFO]   Farm: 9 videos
+[13:21:12] [INFO]   Fish: 46 videos
+[13:21:37] [INFO]   ── Progress: 2100/3531 (59.5%) | Elapsed: 35m 25s
+[13:22:02] [INFO]   Fishing: 60 videos
+[13:22:30] [WARN]     WARN_FEW_GOOD : P?che tacaud 14 avril 2012.mp4 (7 frames)
+[13:22:32] [INFO]   ── Progress: 2150/3531 (60.9%) | Elapsed: 36m 20s
+[13:22:53] [WARN]     WARN_FEW_GOOD : ????????? ?????.?????? ???? ?????.mp4 (9 frames)
+[13:23:07] [INFO]   Garden: 7 videos
+[13:23:15] [INFO]   Horse: 30 videos
+[13:23:26] [INFO]   ── Progress: 2200/3531 (62.3%) | Elapsed: 37m 14s
+[13:23:44] [INFO]   Nature: 7 videos
+[13:23:53] [INFO]   Outdoor recreation: 47 videos
+[13:24:20] [INFO]   ── Progress: 2250/3531 (63.7%) | Elapsed: 38m 8s
+[13:24:48] [INFO]   Pet: 149 videos
+[13:25:16] [INFO]   ── Progress: 2300/3531 (65.1%) | Elapsed: 39m 4s
+[13:26:09] [INFO]   ── Progress: 2350/3531 (66.6%) | Elapsed: 39m 57s
+[13:26:58] [INFO]   ── Progress: 2400/3531 (68.0%) | Elapsed: 40m 46s
+[13:27:19] [INFO]   Plant: 21 videos
+[13:27:43] [INFO]   Tree: 7 videos
+[13:27:51] [INFO]   Wildlife: 7 videos
+[13:27:51] [INFO]   ── Progress: 2450/3531 (69.4%) | Elapsed: 41m 39s
+[13:27:58] [INFO] 
+  train/Natural_Content DONE:
+[13:27:58] [INFO]     success       : 644
+[13:27:58] [INFO]     warn_few_good : 2
+[13:27:58] [INFO]     warn_all_black: 0
+[13:27:58] [INFO]     skip_short    : 0
+[13:27:58] [INFO]     fail_open     : 0
+[13:27:58] [INFO]     fail_read     : 0
+[13:27:58] [INFO] 
+############################################################
+[13:27:58] [INFO] SPLIT: VAL
+[13:27:58] [INFO] ############################################################
+[13:27:58] [INFO] 
+──────────────────────────────────────────────────
+[13:27:58] [INFO] val/Animation
+[13:27:58] [INFO] Subcategories: ['Animation', 'Bleach', 'Cartoon', 'Dragon Ball', 'Lego minifigure', 'Naruto', 'One Piece', 'Sonic the Hedgehog', 'The Walt Disney Company']
+[13:27:58] [INFO]   Animation: 43 videos
+[13:28:35] [INFO]   Bleach: 1 videos
+[13:28:35] [INFO]   ── Progress: 2500/3531 (70.8%) | Elapsed: 42m 23s
+[13:28:36] [INFO]   Cartoon: 107 videos
+[13:29:24] [INFO]   ── Progress: 2550/3531 (72.2%) | Elapsed: 43m 12s
+[13:30:08] [INFO]   ── Progress: 2600/3531 (73.6%) | Elapsed: 43m 55s
+[13:30:16] [INFO]   Dragon Ball: 5 videos
+[13:30:21] [INFO]   Lego minifigure: 6 videos
+[13:30:27] [INFO]   Naruto: 8 videos
+[13:30:35] [INFO]   One Piece: 1 videos
+[13:30:36] [INFO]   Sonic the Hedgehog: 5 videos
+[13:30:41] [INFO]   The Walt Disney Company: 3 videos
+[13:30:44] [INFO] 
+  val/Animation DONE:
+[13:30:44] [INFO]     success       : 179
+[13:30:44] [INFO]     warn_few_good : 0
+[13:30:44] [INFO]     warn_all_black: 0
+[13:30:44] [INFO]     skip_short    : 0
+[13:30:44] [INFO]     fail_open     : 0
+[13:30:44] [INFO]     fail_read     : 0
+[13:30:44] [INFO] 
+──────────────────────────────────────────────────
+[13:30:44] [INFO] val/Flat_Content
+[13:30:44] [INFO] Subcategories: ['Chart', 'Map', 'Poster', 'Screencast', 'Text', 'Website']
+[13:30:44] [INFO]   Chart: 26 videos
+[13:30:57] [INFO]   ── Progress: 2650/3531 (75.0%) | Elapsed: 44m 45s
+[13:31:06] [INFO]   Map: 23 videos
+[13:31:30] [INFO]   Poster: 3 videos
+[13:31:33] [INFO]   Screencast: 14 videos
+[13:31:43] [INFO]   ── Progress: 2700/3531 (76.5%) | Elapsed: 45m 31s
+[13:31:45] [INFO]   Text: 14 videos
+[13:31:47] [WARN]     WARN_ALL_BLACK: Annalisa - Ti sento testo (Lyric video).mp4
+[13:31:49] [WARN]     WARN_ALL_BLACK: Hotel California - Eagles testo e traduzione.mp4
+[13:31:49] [WARN]     WARN_FEW_GOOD : Last Kiss - Pearl Jam testo e traduzione.mp4 (7 frames)
+[13:31:53] [WARN]     WARN_ALL_BLACK: The nights - Avicii traduzione e lyrics.mp4
+[13:31:55] [WARN]     WARN_FEW_GOOD : l_unica fra tante testo.mp4 (2 frames)
+[13:31:57] [INFO]   Website: 61 videos
+[13:32:26] [INFO]   ── Progress: 2750/3531 (77.9%) | Elapsed: 46m 14s
+[13:32:49] [INFO] 
+  val/Flat_Content DONE:
+[13:32:49] [INFO]     success       : 136
+[13:32:49] [INFO]     warn_few_good : 2
+[13:32:49] [INFO]     warn_all_black: 3
+[13:32:49] [INFO]     skip_short    : 0
+[13:32:49] [INFO]     fail_open     : 0
+[13:32:49] [INFO]     fail_read     : 0
+[13:32:49] [INFO] 
+──────────────────────────────────────────────────
+[13:32:49] [INFO] val/Gaming
+[13:32:49] [INFO] Subcategories: ['Action-adventure game', 'Battlefield', 'Call of Duty', 'FIFA 15', 'Games', 'Grand Theft Auto', 'Grand Theft Auto V', 'League of Legends', 'Minecraft', 'RuneScape', 'Video game', 'World of Warcraft']
+[13:32:49] [INFO]   Action-adventure game: 44 videos
+[13:33:15] [INFO]   ── Progress: 2800/3531 (79.3%) | Elapsed: 47m 3s
+[13:33:39] [INFO]   Battlefield: 1 videos
+[13:33:40] [INFO]   Call of Duty: 9 videos
+[13:33:50] [INFO]   FIFA 15: 1 videos
+[13:33:52] [INFO]   Games: 59 videos
+[13:34:11] [INFO]   ── Progress: 2850/3531 (80.7%) | Elapsed: 47m 59s
+[13:34:42] [WARN]     WARN_FEW_GOOD : killtron - Triforce (Legend Of Zelda).mp4 (7 frames)
+[13:34:53] [INFO]   Grand Theft Auto: 1 videos
+[13:34:55] [INFO]   Grand Theft Auto V: 4 videos
+[13:34:59] [INFO]   League of Legends: 1 videos
+[13:35:00] [INFO]   Minecraft: 7 videos
+[13:35:03] [INFO]   ── Progress: 2900/3531 (82.1%) | Elapsed: 48m 51s
+[13:35:08] [INFO]   RuneScape: 1 videos
+[13:35:09] [INFO]   Video game: 58 videos
+[13:35:44] [WARN]     WARN_FEW_GOOD : Madden 25 Ultimate Team? The Best Packs Ever! Shou (2 frames)
+[13:35:57] [INFO]   ── Progress: 2950/3531 (83.5%) | Elapsed: 49m 45s
+[13:36:04] [WARN]     WARN_FEW_GOOD : Wii ? ?????(Fatal Frame4)1-4 ?? Ruka.mp4 (12 frames)
+[13:36:11] [INFO]   World of Warcraft: 4 videos
+[13:36:16] [INFO] 
+  val/Gaming DONE:
+[13:36:16] [INFO]     success       : 187
+[13:36:16] [INFO]     warn_few_good : 3
+[13:36:16] [INFO]     warn_all_black: 0
+[13:36:16] [INFO]     skip_short    : 0
+[13:36:16] [INFO]     fail_open     : 0
+[13:36:16] [INFO]     fail_read     : 0
+[13:36:16] [INFO] 
+──────────────────────────────────────────────────
+[13:36:16] [INFO] val/Natural_Content
+[13:36:16] [INFO] Subcategories: ['Animal', 'Bird', 'Cat', 'Chicken', 'Dog', 'Farm', 'Fish', 'Fishing', 'Garden', 'Horse', 'Nature', 'Outdoor recreation', 'Pet', 'Plant', 'Tree', 'Wildlife']
+[13:36:16] [INFO]   Animal: 50 videos
+[13:36:51] [INFO]   ── Progress: 3000/3531 (85.0%) | Elapsed: 50m 39s
+[13:37:07] [INFO]   Bird: 6 videos
+[13:37:13] [INFO]   Cat: 4 videos
+[13:37:16] [INFO]   Chicken: 1 videos
+[13:37:17] [INFO]   Dog: 11 videos
+[13:37:29] [INFO]   Farm: 2 videos
+[13:37:31] [INFO]   Fish: 13 videos
+[13:37:40] [INFO]   ── Progress: 3050/3531 (86.4%) | Elapsed: 51m 28s
+[13:37:46] [INFO]   Fishing: 17 videos
+[13:38:05] [INFO]   Garden: 2 videos
+[13:38:07] [INFO]   Horse: 8 videos
+[13:38:16] [INFO]   Nature: 2 videos
+[13:38:18] [INFO]   Outdoor recreation: 13 videos
+[13:38:33] [INFO]   Pet: 42 videos
+[13:38:37] [INFO]   ── Progress: 3100/3531 (87.8%) | Elapsed: 52m 25s
+[13:39:17] [INFO]   Plant: 6 videos
+[13:39:24] [INFO]   Tree: 2 videos
+[13:39:26] [INFO]   Wildlife: 2 videos
+[13:39:28] [INFO] 
+  val/Natural_Content DONE:
+[13:39:28] [INFO]     success       : 181
+[13:39:28] [INFO]     warn_few_good : 0
+[13:39:28] [INFO]     warn_all_black: 0
+[13:39:28] [INFO]     skip_short    : 0
+[13:39:28] [INFO]     fail_open     : 0
+[13:39:28] [INFO]     fail_read     : 0
+[13:39:28] [INFO] 
+############################################################
+[13:39:28] [INFO] SPLIT: TEST
+[13:39:28] [INFO] ############################################################
+[13:39:28] [INFO] 
+──────────────────────────────────────────────────
+[13:39:28] [INFO] test/Animation
+[13:39:28] [INFO] Subcategories: ['Animation', 'Bleach', 'Cartoon', 'Dragon Ball', 'Lego minifigure', 'Naruto', 'One Piece', 'Sonic the Hedgehog', 'The Walt Disney Company']
+[13:39:28] [INFO]   Animation: 22 videos
+[13:39:30] [INFO]   ── Progress: 3150/3531 (89.2%) | Elapsed: 53m 18s
+[13:39:49] [INFO]   Bleach: 1 videos
+[13:39:49] [INFO]   Cartoon: 55 videos
+[13:40:19] [INFO]   ── Progress: 3200/3531 (90.6%) | Elapsed: 54m 7s
+[13:40:43] [INFO]   Dragon Ball: 3 videos
+[13:40:46] [INFO]   Lego minifigure: 3 videos
+[13:40:48] [INFO]   Naruto: 5 videos
+[13:40:53] [INFO]   One Piece: 2 videos
+[13:40:55] [INFO]   Sonic the Hedgehog: 3 videos
+[13:40:58] [INFO]   The Walt Disney Company: 3 videos
+[13:41:01] [INFO] 
+  test/Animation DONE:
+[13:41:01] [INFO]     success       : 97
+[13:41:01] [INFO]     warn_few_good : 0
+[13:41:01] [INFO]     warn_all_black: 0
+[13:41:01] [INFO]     skip_short    : 0
+[13:41:01] [INFO]     fail_open     : 0
+[13:41:01] [INFO]     fail_read     : 0
+[13:41:01] [INFO] 
+──────────────────────────────────────────────────
+[13:41:01] [INFO] test/Flat_Content
+[13:41:01] [INFO] Subcategories: ['Chart', 'Map', 'Poster', 'Screencast', 'Text', 'Website']
+[13:41:01] [INFO]   Chart: 14 videos
+[13:41:05] [INFO]   ── Progress: 3250/3531 (92.0%) | Elapsed: 54m 53s
+[13:41:13] [INFO]   Map: 13 videos
+[13:41:15] [WARN]     WARN_FEW_GOOD : Black Ops 2 News All Multiplayer Maps Revealed! Br (14 frames)
+[13:41:26] [INFO]   Poster: 3 videos
+[13:41:29] [INFO]   Screencast: 8 videos
+[13:41:36] [INFO]   Text: 8 videos
+[13:41:37] [WARN]     WARN_ALL_BLACK: Dear jack - Eterna testo (Lyric video).mp4
+[13:41:43] [INFO]   Website: 32 videos
+[13:41:51] [INFO]   ── Progress: 3300/3531 (93.5%) | Elapsed: 55m 39s
+[13:42:10] [INFO] 
+  test/Flat_Content DONE:
+[13:42:10] [INFO]     success       : 76
+[13:42:10] [INFO]     warn_few_good : 1
+[13:42:10] [INFO]     warn_all_black: 1
+[13:42:10] [INFO]     skip_short    : 0
+[13:42:10] [INFO]     fail_open     : 0
+[13:42:10] [INFO]     fail_read     : 0
+[13:42:10] [INFO] 
+──────────────────────────────────────────────────
+[13:42:10] [INFO] test/Gaming
+[13:42:10] [INFO] Subcategories: ['Action-adventure game', 'Battlefield', 'Call of Duty', 'FIFA 15', 'Games', 'Grand Theft Auto', 'Grand Theft Auto V', 'League of Legends', 'Minecraft', 'RuneScape', 'Video game', 'World of Warcraft']
+[13:42:10] [INFO]   Action-adventure game: 22 videos
+[13:42:36] [INFO]   Battlefield: 1 videos
+[13:42:38] [INFO]   Call of Duty: 5 videos
+[13:42:43] [INFO]   ── Progress: 3350/3531 (94.9%) | Elapsed: 56m 31s
+[13:42:44] [INFO]   FIFA 15: 1 videos
+[13:42:45] [INFO]   Games: 30 videos
+[13:43:11] [WARN]     WARN_ALL_BLACK: Slender a new nightmare update 2.mp4
+[13:43:17] [INFO]   Grand Theft Auto: 2 videos
+[13:43:19] [INFO]   Grand Theft Auto V: 3 videos
+[13:43:23] [INFO]   League of Legends: 2 videos
+[13:43:25] [INFO]   Minecraft: 5 videos
+[13:43:31] [INFO]   RuneScape: 1 videos
+[13:43:32] [INFO]   Video game: 30 videos
+[13:43:38] [INFO]   ── Progress: 3400/3531 (96.3%) | Elapsed: 57m 26s
+[13:44:03] [INFO]   World of Warcraft: 3 videos
+[13:44:07] [INFO] 
+  test/Gaming DONE:
+[13:44:07] [INFO]     success       : 104
+[13:44:07] [INFO]     warn_few_good : 0
+[13:44:07] [INFO]     warn_all_black: 1
+[13:44:07] [INFO]     skip_short    : 0
+[13:44:07] [INFO]     fail_open     : 0
+[13:44:07] [INFO]     fail_read     : 0
+[13:44:07] [INFO] 
+──────────────────────────────────────────────────
+[13:44:07] [INFO] test/Natural_Content
+[13:44:07] [INFO] Subcategories: ['Animal', 'Bird', 'Cat', 'Chicken', 'Dog', 'Farm', 'Fish', 'Fishing', 'Garden', 'Horse', 'Nature', 'Outdoor recreation', 'Pet', 'Plant', 'Tree', 'Wildlife']
+[13:44:07] [INFO]   Animal: 25 videos
+[13:44:29] [INFO]   ── Progress: 3450/3531 (97.7%) | Elapsed: 58m 17s
+[13:44:32] [INFO]   Bird: 5 videos
+[13:44:37] [INFO]   Cat: 3 videos
+[13:44:40] [INFO]   Chicken: 1 videos
+[13:44:41] [INFO]   Dog: 6 videos
+[13:44:47] [INFO]   Farm: 3 videos
+[13:44:50] [INFO]   Fish: 8 videos
+[13:45:00] [INFO]   Fishing: 10 videos
+[13:45:09] [INFO]   Garden: 1 videos
+[13:45:10] [INFO]   Horse: 5 videos
+[13:45:16] [INFO]   Nature: 1 videos
+[13:45:17] [INFO]   Outdoor recreation: 8 videos
+[13:45:21] [INFO]   ── Progress: 3500/3531 (99.1%) | Elapsed: 59m 9s
+[13:45:26] [INFO]   Pet: 22 videos
+[13:45:49] [INFO]   Plant: 3 videos
+[13:45:53] [INFO]   Tree: 2 videos
+[13:45:55] [INFO]   Wildlife: 1 videos
+[13:45:56] [INFO] 
+  test/Natural_Content DONE:
+[13:45:56] [INFO]     success       : 104
+[13:45:56] [INFO]     warn_few_good : 0
+[13:45:56] [INFO]     warn_all_black: 0
+[13:45:56] [INFO]     skip_short    : 0
+[13:45:56] [INFO]     fail_open     : 0
+[13:45:56] [INFO]     fail_read     : 0
+[13:45:56] [INFO] 
+============================================================
+[13:45:56] [INFO] EXTRACTION COMPLETE
+[13:45:56] [INFO] ============================================================
+[13:45:56] [INFO] Total time    : 59m 44s
+[13:45:56] [INFO] Processed     : 3531
+[13:45:56] [INFO] Success       : 3505
+[13:45:56] [INFO] Warn few good : 18
+[13:45:56] [INFO] Warn all black: 8
+[13:45:56] [INFO] Skip short    : 0
+[13:45:56] [INFO] Fail open     : 0
+[13:45:56] [INFO] Fail read     : 0
+[13:45:56] [INFO] 
+Frames dir    : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames
+[13:45:56] [INFO] Log file      : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/full_extraction.log
+[13:45:56] [INFO] Stats file    : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/extraction_stats.json
+[13:45:56] [INFO] Stats saved to: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/extraction_stats.json
+[13:45:56] [INFO] 
+────────────────────────────────────────────────────────────
+[13:45:56] [INFO] OUTPUT STRUCTURE VERIFICATION
+[13:45:56] [INFO] ────────────────────────────────────────────────────────────
+[13:45:57] [INFO]   train/Animation            videos: 633    frames: 10122    avg: 16.0
+[13:45:57] [INFO]   train/Flat_Content         videos: 501    frames: 8008     avg: 16.0
+[13:45:57] [INFO]   train/Gaming               videos: 676    frames: 10739    avg: 15.9
+[13:45:57] [INFO]   train/Natural_Content      videos: 646    frames: 10320    avg: 16.0
+[13:45:57] [INFO]   val/Animation            videos: 179    frames: 2864     avg: 16.0
+[13:45:57] [INFO]   val/Flat_Content         videos: 141    frames: 2233     avg: 15.8
+[13:45:57] [INFO]   val/Gaming               videos: 190    frames: 3013     avg: 15.9
+[13:45:57] [INFO]   val/Natural_Content      videos: 181    frames: 2896     avg: 16.0
+[13:45:57] [INFO]   test/Animation            videos: 97     frames: 1552     avg: 16.0
+[13:45:57] [INFO]   test/Flat_Content         videos: 78     frames: 1246     avg: 16.0
+[13:45:57] [INFO]   test/Gaming               videos: 105    frames: 1680     avg: 16.0
+[13:45:57] [INFO]   test/Natural_Content      videos: 104    frames: 1664     avg: 16.0
+[13:45:57] [INFO] 
+  TOTAL video folders : 3531
+[13:45:57] [INFO]   TOTAL frames saved  : 56337
+[13:45:57] [INFO]   Expected avg frames : 16 per video
+[13:45:57] [INFO] 
+────────────────────────────────────────────────────────────
+[13:45:57] [INFO] NEXT STEPS:
+[13:45:57] [INFO] ────────────────────────────────────────────────────────────
+[13:45:57] [INFO] 1. Check for warnings and failures:
+[13:45:57] [INFO]    grep WARN logs/full_extraction.log | head -50
+[13:45:57] [INFO]    grep FAIL logs/full_extraction.log | head -50
+[13:45:57] [INFO] 2. Check stats summary:
+[13:45:57] [INFO]    cat logs/extraction_stats.json
+[13:45:57] [INFO] 3. Run temporal overlap check on full extracted frames:
+[13:45:57] [INFO]    python src/check_temporal_overlap.py
+[13:45:57] [INFO] 4. Run static overlap check on full extracted frames:
+[13:45:57] [INFO]    python src/check_static_overlap.py
+[13:45:57] [INFO] 5. Only proceed to resize after both checks pass
+[13:45:57] [INFO] ────────────────────────────────────────────────────────────

@@ -1,0 +1,70 @@
+{
+  "config": {
+    "frame_size": [
+      224,
+      224
+    ],
+    "interpolation": "INTER_LINEAR"
+  },
+  "results": {
+    "train": {
+      "Animation": {
+        "success": 10122,
+        "failed": 0
+      },
+      "Flat_Content": {
+        "success": 8008,
+        "failed": 0
+      },
+      "Gaming": {
+        "success": 10734,
+        "failed": 0
+      },
+      "Natural_Content": {
+        "success": 10313,
+        "failed": 0
+      }
+    },
+    "val": {
+      "Animation": {
+        "success": 2864,
+        "failed": 0
+      },
+      "Flat_Content": {
+        "success": 2224,
+        "failed": 0
+      },
+      "Gaming": {
+        "success": 3004,
+        "failed": 0
+      },
+      "Natural_Content": {
+        "success": 2896,
+        "failed": 0
+      }
+    },
+    "test": {
+      "Animation": {
+        "success": 1552,
+        "failed": 0
+      },
+      "Flat_Content": {
+        "success": 1246,
+        "failed": 0
+      },
+      "Gaming": {
+        "success": 1680,
+        "failed": 0
+      },
+      "Natural_Content": {
+        "success": 1664,
+        "failed": 0
+      }
+    }
+  },
+  "totals": {
+    "processed": 56307,
+    "success": 56307,
+    "failed": 0
+  }
+}

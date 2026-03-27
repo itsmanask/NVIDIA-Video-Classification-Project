@@ -1,0 +1,348 @@
+
+======================================================================
+COMPLETE DATASET AUDIT
+Generated: 2026-03-21 08:58:31
+======================================================================
+RAW DATA   : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/data/raw
+FRAMES     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/frames
+======================================================================
+
+
+######################################################################
+SPLIT: TRAIN
+######################################################################
+
+──────────────────────────────────────────────────────────────────────
+  Class: Animation
+  Split: train
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animation                               150          150       2394   16.0       ✓
+  Bleach                                    4            4         64   16.0       ✓
+  Cartoon                                 375          375       6000   16.0       ✓
+  Dragon Ball                              17           17        272   16.0       ✓
+  Lego minifigure                          21           21        336   16.0       ✓
+  Naruto                                   29           29        464   16.0       ✓
+  One Piece                                 6            6         96   16.0       ✓
+  Sonic the Hedgehog                       18           18        288   16.0       ✓
+  The Walt Disney Company                  13           13        208   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Animation                         633          633      10122   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Flat_Content
+  Split: train
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Chart                                    91           91       1456   16.0       ✓
+  Map                                      82           82       1312   16.0       ✓
+  Poster                                   11           11        176   16.0       ✓
+  Screencast                               50           50        800   16.0       ✓
+  Text                                     51           51        808   15.8       ✓
+  Website                                 216          216       3456   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Flat_Content                      501          501       8008   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Gaming
+  Split: train
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Action-adventure game                   154          154       2464   16.0       ✓
+  Battlefield                               4            4         64   16.0       ✓
+  Call of Duty                             32           32        512   16.0       ✓
+  FIFA 15                                   3            3         48   16.0       ✓
+  Games                                   207          206       3288   16.0      -1
+  Grand Theft Auto                          6            6         96   16.0       ✓
+  Grand Theft Auto V                       16           16        256   16.0       ✓
+  League of Legends                         4            4         64   16.0       ✓
+  Minecraft                                26           26        416   16.0       ✓
+  RuneScape                                 4            4         64   16.0       ✓
+  Video game                              204          202       3222   16.0      -2
+  World of Warcraft                        16           15        240   16.0      -1
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Gaming                            676          672      10734   16.0      -4
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Natural_Content
+  Split: train
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animal                                  175          175       2800   16.0       ✓
+  Bird                                     23           23        368   16.0       ✓
+  Cat                                      15           15        240   16.0       ✓
+  Chicken                                   4            4         64   16.0       ✓
+  Dog                                      39           39        624   16.0       ✓
+  Farm                                      9            9        144   16.0       ✓
+  Fish                                     46           46        736   16.0       ✓
+  Fishing                                  60           59        937   15.9      -1
+  Garden                                    7            7        112   16.0       ✓
+  Horse                                    30           30        480   16.0       ✓
+  Nature                                    7            7        112   16.0       ✓
+  Outdoor recreation                       47           47        752   16.0       ✓
+  Pet                                     149          149       2384   16.0       ✓
+  Plant                                    21           21        336   16.0       ✓
+  Tree                                      7            7        112   16.0       ✓
+  Wildlife                                  7            7        112   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Natural_Content                   646          645      10313   16.0      -1
+
+
+======================================================================
+  SPLIT TRAIN TOTALS:
+  Raw videos       : 2456
+  Extracted videos : 2451
+  Difference       : 5 videos not extracted
+  Total frames     : 39177
+  Average frames   : 16.0 per video
+======================================================================
+
+######################################################################
+SPLIT: VAL
+######################################################################
+
+──────────────────────────────────────────────────────────────────────
+  Class: Animation
+  Split: val
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animation                                43           43        688   16.0       ✓
+  Bleach                                    1            1         16   16.0       ✓
+  Cartoon                                 107          107       1712   16.0       ✓
+  Dragon Ball                               5            5         80   16.0       ✓
+  Lego minifigure                           6            6         96   16.0       ✓
+  Naruto                                    8            8        128   16.0       ✓
+  One Piece                                 1            1         16   16.0       ✓
+  Sonic the Hedgehog                        5            5         80   16.0       ✓
+  The Walt Disney Company                   3            3         48   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Animation                         179          179       2864   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Flat_Content
+  Split: val
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Chart                                    26           26        416   16.0       ✓
+  Map                                      23           23        368   16.0       ✓
+  Poster                                    3            3         48   16.0       ✓
+  Screencast                               14           14        224   16.0       ✓
+  Text                                     14           12        192   16.0      -2
+  Website                                  61           61        976   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Flat_Content                      141          139       2224   16.0      -2
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Gaming
+  Split: val
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Action-adventure game                    44           44        704   16.0       ✓
+  Battlefield                               1            1         16   16.0       ✓
+  Call of Duty                              9            9        144   16.0       ✓
+  FIFA 15                                   1            1         16   16.0       ✓
+  Games                                    59           58        928   16.0      -1
+  Grand Theft Auto                          1            1         16   16.0       ✓
+  Grand Theft Auto V                        4            4         64   16.0       ✓
+  League of Legends                         1            1         16   16.0       ✓
+  Minecraft                                 7            7        112   16.0       ✓
+  RuneScape                                 1            1         16   16.0       ✓
+  Video game                               58           57        908   15.9      -1
+  World of Warcraft                         4            4         64   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Gaming                            190          188       3004   16.0      -2
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Natural_Content
+  Split: val
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animal                                   50           50        800   16.0       ✓
+  Bird                                      6            6         96   16.0       ✓
+  Cat                                       4            4         64   16.0       ✓
+  Chicken                                   1            1         16   16.0       ✓
+  Dog                                      11           11        176   16.0       ✓
+  Farm                                      2            2         32   16.0       ✓
+  Fish                                     13           13        208   16.0       ✓
+  Fishing                                  17           17        272   16.0       ✓
+  Garden                                    2            2         32   16.0       ✓
+  Horse                                     8            8        128   16.0       ✓
+  Nature                                    2            2         32   16.0       ✓
+  Outdoor recreation                       13           13        208   16.0       ✓
+  Pet                                      42           42        672   16.0       ✓
+  Plant                                     6            6         96   16.0       ✓
+  Tree                                      2            2         32   16.0       ✓
+  Wildlife                                  2            2         32   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Natural_Content                   181          181       2896   16.0       ✓
+
+
+======================================================================
+  SPLIT VAL TOTALS:
+  Raw videos       : 691
+  Extracted videos : 687
+  Difference       : 4 videos not extracted
+  Total frames     : 10988
+  Average frames   : 16.0 per video
+======================================================================
+
+######################################################################
+SPLIT: TEST
+######################################################################
+
+──────────────────────────────────────────────────────────────────────
+  Class: Animation
+  Split: test
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animation                                22           22        352   16.0       ✓
+  Bleach                                    1            1         16   16.0       ✓
+  Cartoon                                  55           55        880   16.0       ✓
+  Dragon Ball                               3            3         48   16.0       ✓
+  Lego minifigure                           3            3         48   16.0       ✓
+  Naruto                                    5            5         80   16.0       ✓
+  One Piece                                 2            2         32   16.0       ✓
+  Sonic the Hedgehog                        3            3         48   16.0       ✓
+  The Walt Disney Company                   3            3         48   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Animation                          97           97       1552   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Flat_Content
+  Split: test
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Chart                                    14           14        224   16.0       ✓
+  Map                                      13           13        206   15.8       ✓
+  Poster                                    3            3         48   16.0       ✓
+  Screencast                                8            8        128   16.0       ✓
+  Text                                      8            8        128   16.0       ✓
+  Website                                  32           32        512   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Flat_Content                       78           78       1246   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Gaming
+  Split: test
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Action-adventure game                    22           22        352   16.0       ✓
+  Battlefield                               1            1         16   16.0       ✓
+  Call of Duty                              5            5         80   16.0       ✓
+  FIFA 15                                   1            1         16   16.0       ✓
+  Games                                    30           30        480   16.0       ✓
+  Grand Theft Auto                          2            2         32   16.0       ✓
+  Grand Theft Auto V                        3            3         48   16.0       ✓
+  League of Legends                         2            2         32   16.0       ✓
+  Minecraft                                 5            5         80   16.0       ✓
+  RuneScape                                 1            1         16   16.0       ✓
+  Video game                               30           30        480   16.0       ✓
+  World of Warcraft                         3            3         48   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Gaming                            105          105       1680   16.0       ✓
+
+
+──────────────────────────────────────────────────────────────────────
+  Class: Natural_Content
+  Split: test
+──────────────────────────────────────────────────────────────────────
+  Subcategory                      Raw Videos    Extracted     Frames    Avg   Match
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  Animal                                   25           25        400   16.0       ✓
+  Bird                                      5            5         80   16.0       ✓
+  Cat                                       3            3         48   16.0       ✓
+  Chicken                                   1            1         16   16.0       ✓
+  Dog                                       6            6         96   16.0       ✓
+  Farm                                      3            3         48   16.0       ✓
+  Fish                                      8            8        128   16.0       ✓
+  Fishing                                  10           10        160   16.0       ✓
+  Garden                                    1            1         16   16.0       ✓
+  Horse                                     5            5         80   16.0       ✓
+  Nature                                    1            1         16   16.0       ✓
+  Outdoor recreation                        8            8        128   16.0       ✓
+  Pet                                      22           22        352   16.0       ✓
+  Plant                                     3            3         48   16.0       ✓
+  Tree                                      2            2         32   16.0       ✓
+  Wildlife                                  1            1         16   16.0       ✓
+  ────────────────────────────── ──────────── ──────────── ────────── ────── ───────
+  TOTAL Natural_Content                   104          104       1664   16.0       ✓
+
+
+======================================================================
+  SPLIT TEST TOTALS:
+  Raw videos       : 384
+  Extracted videos : 384
+  Difference       : 0 videos not extracted
+  Total frames     : 6142
+  Average frames   : 16.0 per video
+======================================================================
+
+
+######################################################################
+GRAND TOTALS — ALL SPLITS COMBINED
+######################################################################
+
+  Class                      Train Raw  Val Raw  Test Raw  Total Raw
+  ───────────────────────── ────────── ──────── ───────── ──────────
+  Animation                        633      179        97        909
+  Flat_Content                     501      141        78        720
+  Gaming                           676      190       105        971
+  Natural_Content                  646      181       104        931
+
+  ──────────────────────────────────────────────────────────────────────
+  Total raw videos     : 3531
+  Total extracted      : 3522
+  Total not extracted  : 9
+  Total frames saved   : 56307
+  Average frames/video : 16.0
+
+  Extraction rate      : 99.7%
+
+CLASS BALANCE CHECK:
+
+  TRAIN:
+    Animation                : 633
+    Flat_Content             : 501
+    Gaming                   : 672
+    Natural_Content          : 645
+    Balance ratio: 1.34x  ✅ BALANCED
+
+  VAL:
+    Animation                : 179
+    Flat_Content             : 139
+    Gaming                   : 188
+    Natural_Content          : 181
+    Balance ratio: 1.35x  ✅ BALANCED
+
+  TEST:
+    Animation                : 97
+    Flat_Content             : 78
+    Gaming                   : 105
+    Natural_Content          : 104
+    Balance ratio: 1.35x  ✅ BALANCED
+
+
+Full log : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/dataset_audit.log
+Summary  : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/dataset_audit.txt
+JSON     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/dataset_audit.json
+
+AUDIT COMPLETE

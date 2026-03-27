@@ -1,0 +1,87 @@
+============================================================
+TEMPORAL OVERLAP CHECK — FULL DATASET
+============================================================
+Sampling 150 videos per class from train split
+
+Processing: Animation
+  Videos sampled : 150
+  Valid results  : 150
+  Mean variation : 54.18
+  Std variation  : 24.33
+  Min variation  : 0.00
+  Max variation  : 103.55
+
+Processing: Flat_Content
+  Videos sampled : 150
+  Valid results  : 150
+  Mean variation : 27.87
+  Std variation  : 18.84
+  Min variation  : 0.22
+  Max variation  : 105.66
+
+Processing: Gaming
+  Videos sampled : 150
+  Valid results  : 150
+  Mean variation : 42.39
+  Std variation  : 15.74
+  Min variation  : 12.70
+  Max variation  : 88.96
+
+Processing: Natural_Content
+  Videos sampled : 150
+  Valid results  : 150
+  Mean variation : 49.43
+  Std variation  : 16.28
+  Min variation  : 3.29
+  Max variation  : 91.41
+
+Plot saved: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/temporal_overlap.png
+
+============================================================
+OVERLAP ANALYSIS
+============================================================
+
+Animation vs Flat_Content:
+  Animation            mean=54.2 range=(17.7,90.7)
+  Flat_Content         mean=27.9 range=(-0.4,56.1)
+  Mean difference : 26.3
+  Result          : ⚠️ OVERLAP
+
+Animation vs Gaming:
+  Animation            mean=54.2 range=(17.7,90.7)
+  Gaming               mean=42.4 range=(18.8,66.0)
+  Mean difference : 11.8
+  Result          : ⚠️ OVERLAP
+
+Animation vs Natural_Content:
+  Animation            mean=54.2 range=(17.7,90.7)
+  Natural_Content      mean=49.4 range=(25.0,73.9)
+  Mean difference : 4.7
+  Result          : ⚠️ OVERLAP
+
+Flat_Content vs Gaming:
+  Flat_Content         mean=27.9 range=(-0.4,56.1)
+  Gaming               mean=42.4 range=(18.8,66.0)
+  Mean difference : 14.5
+  Result          : ⚠️ OVERLAP
+
+Flat_Content vs Natural_Content:
+  Flat_Content         mean=27.9 range=(-0.4,56.1)
+  Natural_Content      mean=49.4 range=(25.0,73.9)
+  Mean difference : 21.6
+  Result          : ⚠️ OVERLAP
+
+Gaming vs Natural_Content:
+  Gaming               mean=42.4 range=(18.8,66.0)
+  Natural_Content      mean=49.4 range=(25.0,73.9)
+  Mean difference : 7.0
+  Result          : ⚠️ OVERLAP
+
+============================================================
+INTERPRETATION:
+============================================================
+SEPARATE = temporal features can help distinguish these classes
+OVERLAP  = temporal alone cannot separate — spatial features needed
+
+This does NOT mean the model will fail on overlapping classes.
+The CNN spatial features will handle what temporal cannot.

@@ -1,0 +1,108 @@
+[20:07:43] [INFO] ============================================================
+[20:07:43] [INFO] VIDEO CLASSIFIER — TRAINING
+[20:07:43] [INFO] ============================================================
+[20:07:44] [INFO] Device: cuda
+[20:07:44] [INFO] GPU   : NVIDIA A100-PCIE-40GB MIG 2g.10gb
+[20:07:44] [INFO] VRAM  : 10.3 GB
+[20:07:44] [INFO] 
+Building dataloaders...
+[20:07:44] [INFO]   Train batches : 77
+[20:07:44] [INFO]   Val batches   : 22
+[20:07:44] [INFO]   Test batches  : 12
+[20:07:44] [INFO] 
+Building model...
+[20:07:44] [INFO] 
+────────────────────────────────────────────────────────────
+[20:07:44] [INFO] STARTING PHASE 1 — Frozen backbone
+[20:07:44] [INFO] ────────────────────────────────────────────────────────────
+[20:07:44] [INFO] ============================================================
+[20:07:44] [INFO] PHASE 1 START
+[20:07:44] [INFO]   max_epochs : 20
+[20:07:44] [INFO]   lr         : 0.001
+[20:07:44] [INFO]   patience   : 5
+[20:07:44] [INFO] ============================================================
+[20:09:06] [INFO] Phase 1 | Epoch 01/20 | Train loss 0.8470 acc 68.49% | Val loss 0.5681 acc 83.24% | LR 1.00e-03 | 82s
+[20:09:06] [INFO]   ✓ Best val acc: 83.24%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:10:25] [INFO] Phase 1 | Epoch 02/20 | Train loss 0.6600 acc 79.87% | Val loss 0.5291 acc 85.13% | LR 1.00e-03 | 79s
+[20:10:25] [INFO]   ✓ Best val acc: 85.13%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:11:43] [INFO] Phase 1 | Epoch 03/20 | Train loss 0.6020 acc 82.98% | Val loss 0.5000 acc 85.28% | LR 1.00e-03 | 78s
+[20:11:43] [INFO]   ✓ Best val acc: 85.28%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:13:02] [INFO] Phase 1 | Epoch 04/20 | Train loss 0.5962 acc 83.02% | Val loss 0.4975 acc 85.42% | LR 1.00e-03 | 79s
+[20:13:02] [INFO]   ✓ Best val acc: 85.42%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:14:18] [INFO] Phase 1 | Epoch 05/20 | Train loss 0.5627 acc 84.49% | Val loss 0.4831 acc 86.01% | LR 1.00e-03 | 76s
+[20:14:18] [INFO]   ✓ Best val acc: 86.01%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:15:34] [INFO] Phase 1 | Epoch 06/20 | Train loss 0.5982 acc 83.39% | Val loss 0.4816 acc 87.17% | LR 1.00e-03 | 76s
+[20:15:34] [INFO]   ✓ Best val acc: 87.17%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:16:51] [INFO] Phase 1 | Epoch 07/20 | Train loss 0.5600 acc 84.62% | Val loss 0.4654 acc 87.61% | LR 1.00e-03 | 77s
+[20:16:51] [INFO]   ✓ Best val acc: 87.61%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:18:08] [INFO] Phase 1 | Epoch 08/20 | Train loss 0.5582 acc 84.86% | Val loss 0.4594 acc 87.76% | LR 1.00e-03 | 77s
+[20:18:09] [INFO]   ✓ Best val acc: 87.76%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:19:29] [INFO] Phase 1 | Epoch 09/20 | Train loss 0.5502 acc 85.35% | Val loss 0.4617 acc 88.78% | LR 1.00e-03 | 80s
+[20:19:29] [INFO]   ✓ Best val acc: 88.78%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:20:47] [INFO] Phase 1 | Epoch 10/20 | Train loss 0.5624 acc 84.04% | Val loss 0.4707 acc 87.32% | LR 1.00e-03 | 79s
+[20:20:48] [INFO]   No improvement for 1/5 epochs
+[20:22:05] [INFO] Phase 1 | Epoch 11/20 | Train loss 0.5567 acc 85.43% | Val loss 0.4566 acc 89.21% | LR 1.00e-03 | 77s
+[20:22:05] [INFO]   ✓ Best val acc: 89.21%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:23:22] [INFO] Phase 1 | Epoch 12/20 | Train loss 0.5507 acc 85.35% | Val loss 0.4639 acc 88.34% | LR 1.00e-03 | 77s
+[20:23:22] [INFO]   No improvement for 1/5 epochs
+[20:24:40] [INFO] Phase 1 | Epoch 13/20 | Train loss 0.5495 acc 85.60% | Val loss 0.4781 acc 87.46% | LR 1.00e-03 | 78s
+[20:24:40] [INFO]   No improvement for 2/5 epochs
+[20:25:58] [INFO] Phase 1 | Epoch 14/20 | Train loss 0.5367 acc 85.60% | Val loss 0.4915 acc 86.73% | LR 5.00e-04 | 78s
+[20:25:58] [INFO]   No improvement for 3/5 epochs
+[20:27:15] [INFO] Phase 1 | Epoch 15/20 | Train loss 0.5357 acc 85.88% | Val loss 0.4587 acc 88.19% | LR 5.00e-04 | 77s
+[20:27:15] [INFO]   No improvement for 4/5 epochs
+[20:28:32] [INFO] Phase 1 | Epoch 16/20 | Train loss 0.5161 acc 87.11% | Val loss 0.4530 acc 89.07% | LR 5.00e-04 | 77s
+[20:28:32] [INFO]   No improvement for 5/5 epochs
+[20:28:32] [INFO] Early stopping triggered at epoch 16 (no improvement for 5 epochs)
+[20:28:32] [INFO] 
+Phase 1 complete.
+[20:28:32] [INFO]   Best val acc : 89.21%  at epoch 11
+[20:28:32] [INFO]   Best checkpoint : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:28:32] [INFO] ============================================================
+[20:28:32] [INFO] 
+Loading best Phase 1 weights from: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase1_best.pt
+[20:28:32] [INFO]   Phase 1 weights loaded.
+[20:28:32] [INFO] 
+────────────────────────────────────────────────────────────
+[20:28:32] [INFO] STARTING PHASE 2 — Fine-tune last 2 ResNet blocks
+[20:28:32] [INFO] ────────────────────────────────────────────────────────────
+[20:28:32] [INFO] ============================================================
+[20:28:32] [INFO] PHASE 2 START
+[20:28:32] [INFO]   max_epochs : 10
+[20:28:32] [INFO]   lr         : 0.0001
+[20:28:32] [INFO]   patience   : 3
+[20:28:32] [INFO] ============================================================
+[20:29:52] [INFO] Phase 2 | Epoch 01/10 | Train loss 0.5306 acc 87.40% | Val loss 0.4755 acc 87.17% | LR 1.00e-04 | 80s
+[20:29:53] [INFO]   ✓ Best val acc: 87.17%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[20:31:11] [INFO] Phase 2 | Epoch 02/10 | Train loss 0.3963 acc 92.80% | Val loss 0.4581 acc 89.80% | LR 1.00e-04 | 78s
+[20:31:11] [INFO]   ✓ Best val acc: 89.80%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[20:32:29] [INFO] Phase 2 | Epoch 03/10 | Train loss 0.3453 acc 95.01% | Val loss 0.4450 acc 89.94% | LR 1.00e-04 | 78s
+[20:32:30] [INFO]   ✓ Best val acc: 89.94%  → saved /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[20:33:50] [INFO] Phase 2 | Epoch 04/10 | Train loss 0.3027 acc 97.09% | Val loss 0.5271 acc 88.19% | LR 1.00e-04 | 80s
+[20:33:50] [INFO]   No improvement for 1/3 epochs
+[20:35:11] [INFO] Phase 2 | Epoch 05/10 | Train loss 0.2842 acc 98.20% | Val loss 0.4720 acc 89.50% | LR 1.00e-04 | 81s
+[20:35:11] [INFO]   No improvement for 2/3 epochs
+[20:36:32] [INFO] Phase 2 | Epoch 06/10 | Train loss 0.2612 acc 98.85% | Val loss 0.4729 acc 89.65% | LR 5.00e-05 | 80s
+[20:36:32] [INFO]   No improvement for 3/3 epochs
+[20:36:32] [INFO] Early stopping triggered at epoch 6 (no improvement for 3 epochs)
+[20:36:32] [INFO] 
+Phase 2 complete.
+[20:36:32] [INFO]   Best val acc : 89.94%  at epoch 3
+[20:36:32] [INFO]   Best checkpoint : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[20:36:32] [INFO] ============================================================
+[20:36:32] [INFO] 
+Loaded best Phase 2 weights for test evaluation.
+[20:36:38] [INFO] 
+Final TEST accuracy : 90.34%
+[20:36:38] [INFO] Final TEST loss     : 0.4433
+[20:36:38] [INFO] 
+============================================================
+[20:36:38] [INFO] TRAINING COMPLETE
+[20:36:38] [INFO] ============================================================
+[20:36:38] [INFO]   Final model   : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/checkpoints/phase2_best.pt
+[20:36:38] [INFO]   Train log     : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/train.log
+[20:36:38] [INFO]   Hardware log  : /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/hardware.log
+[20:36:38] [INFO] 
+NEXT STEP:
+[20:36:38] [INFO]   python src/evaluate.py
+[20:36:38] [INFO] ============================================================

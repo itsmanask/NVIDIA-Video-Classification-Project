@@ -1,0 +1,56 @@
+============================================================
+RESIZED FRAMES VISUAL SAMPLE
+============================================================
+Sampling 2 videos per class per split
+Total strips: 24
+
+train/Animation — sampling 2 of 633
+  Saved: train_Animation_Animation___Yuya___Yuzu___Astral__.png
+  Saved: train_Animation_Animation_DB_DBZ__DBGT_PICS_.png
+
+train/Flat_Content — sampling 2 of 501
+  Saved: train_Flat_Content_Website_How_to_add_Instagram_feed_to_your_Square.png
+  Saved: train_Flat_Content_Map_Oz_Cyclone_Chasers_-_National_Cyclone_Up.png
+
+train/Gaming — sampling 2 of 672
+  Saved: train_Gaming_Games_GTA5_日本語版_オンライン_1ミッションJOB_波止場の重圧_MONCHI_.png
+  Saved: train_Gaming_Games_Dark_Orbit_9mm_-_Æ_N_War.png
+
+train/Natural_Content — sampling 2 of 645
+  Saved: train_Natural_Content_Animal_Vlog_of_Awesome_-_Outer_Banks_Clam_Hunti.png
+  Saved: train_Natural_Content_Animal_Punta_Hannah__Isla_Livingston__Antartida.png
+
+val/Animation — sampling 2 of 179
+  Saved: val_Animation_Sonic the Hedgehog_Sonic_NextGen_057__Origin.png
+  Saved: val_Animation_Cartoon_Ветер_крепчает__2014__HD_трейлер___премь.png
+
+val/Flat_Content — sampling 2 of 139
+  Saved: val_Flat_Content_Chart_SPC_Healthcare_u_Chart_of_Patient_Falls.png
+  Saved: val_Flat_Content_Website_How_to_Create_a_Real_Estate_Website_usin.png
+
+val/Gaming — sampling 2 of 188
+  Saved: val_Gaming_Action-adventure game_Counter-Strike_1_6___Klimax_lt_-__Pub__S.png
+  Saved: val_Gaming_Action-adventure game_Carl10O1_s_Random_Gaming_Corner__Loopz_f.png
+
+val/Natural_Content — sampling 2 of 181
+  Saved: val_Natural_Content_Animal_Petit_Chien_dans_la_piscine.png
+  Saved: val_Natural_Content_Bird_nimfe_3.png
+
+test/Animation — sampling 2 of 97
+  Saved: test_Animation_Cartoon_DDRMax2-_Dance_Dance_Revolution__PS2__Bu.png
+  Saved: test_Animation_Cartoon_The_King_Of_Fighters_Extra_MUGEN_Tizoc__.png
+
+test/Flat_Content — sampling 2 of 78
+  Saved: test_Flat_Content_Website_ماذا_أحتاج_لأصنع_موقع_إلكتروني_إحترافي__.png
+  Saved: test_Flat_Content_Chart_Dashboards___Report_Charts___Enterprise_.png
+
+test/Gaming — sampling 2 of 105
+  Saved: test_Gaming_RuneScape_Maybe_I_should_stop_fighting_teams_by_my.png
+  Saved: test_Gaming_Call of Duty__PS3__Modern_Warfare_3_Mods__READ_DESCRI.png
+
+test/Natural_Content — sampling 2 of 104
+  Saved: test_Natural_Content_Pet_Подводная_охота_на_Кольском__Часть_7.png
+  Saved: test_Natural_Content_Pet_K9_Concerto.png
+
+Total strips saved: 24
+Output: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/verify_resize_strips

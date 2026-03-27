@@ -1,0 +1,96 @@
+[07:51:48] ============================================================
+[07:51:48] FRAME COUNT VERIFICATION
+[07:51:48] ============================================================
+[07:51:48] Expected frames per video : 16
+[07:51:48] Minimum acceptable        : 8
+[07:51:48]   ACCEPTABLE (10 frames): train/Animation/Animation/Transformers_Prime_Megatron_vs_The_Insecticon_HD
+[07:51:48] 
+train/Animation:
+[07:51:48]   Perfect (16 frames): 632
+[07:51:48]   Acceptable (>=8): 1
+[07:51:48]   Problem (<8)     : 0
+[07:51:48]   ACCEPTABLE (8 frames): train/Flat_Content/Text/Sigla_Completa_-_Digimon__Testo_
+[07:51:48] 
+train/Flat_Content:
+[07:51:48]   Perfect (16 frames): 500
+[07:51:48]   Acceptable (>=8): 1
+[07:51:48]   Problem (<8)     : 0
+[07:51:48]   ACCEPTABLE (14 frames): train/Gaming/Games/Cool_Bits_-_Luigi_s_Mansion_s_Hidden_Menu_Messages___Totaka__s_Song
+[07:51:48]   ACCEPTABLE (10 frames): train/Gaming/Games/StarCraft_2_Cutscene_-_A_Better_Tomorrow
+[07:51:48]   ACCEPTABLE (12 frames): train/Gaming/Video game/Radar-Hack__Alpha____Радар-Хак__Альфа_
+[07:51:48]   ACCEPTABLE (10 frames): train/Gaming/Video game/__Runescape_Money_Guide___300k___an_hour___No_skills_required___HD_
+[07:51:48] 
+train/Gaming:
+[07:51:48]   Perfect (16 frames): 668
+[07:51:48]   Acceptable (>=8): 4
+[07:51:48]   Problem (<8)     : 0
+[07:51:48]   ACCEPTABLE (9 frames): train/Natural_Content/Fishing/Подводная_охота_Черное_море_ночью
+[07:51:48] 
+train/Natural_Content:
+[07:51:48]   Perfect (16 frames): 644
+[07:51:48]   Acceptable (>=8): 1
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+val/Animation:
+[07:51:48]   Perfect (16 frames): 179
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+val/Flat_Content:
+[07:51:48]   Perfect (16 frames): 139
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48]   ACCEPTABLE (12 frames): val/Gaming/Video game/Wii_零_月蝕の仮面_Fatal_Frame4_1-4_流歌_Ruka
+[07:51:48] 
+val/Gaming:
+[07:51:48]   Perfect (16 frames): 187
+[07:51:48]   Acceptable (>=8): 1
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+val/Natural_Content:
+[07:51:48]   Perfect (16 frames): 181
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+test/Animation:
+[07:51:48]   Perfect (16 frames): 97
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48]   ACCEPTABLE (14 frames): test/Flat_Content/Map/Black_Ops_2_News_All_Multiplayer_Maps_Revealed__Brand_New_Leaked_Info1
+[07:51:48] 
+test/Flat_Content:
+[07:51:48]   Perfect (16 frames): 77
+[07:51:48]   Acceptable (>=8): 1
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+test/Gaming:
+[07:51:48]   Perfect (16 frames): 105
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+test/Natural_Content:
+[07:51:48]   Perfect (16 frames): 104
+[07:51:48]   Acceptable (>=8): 0
+[07:51:48]   Problem (<8)     : 0
+[07:51:48] 
+============================================================
+[07:51:48] SUMMARY
+[07:51:48] ============================================================
+[07:51:48] Total video folders : 3522
+[07:51:48] Perfect (16 frames) : 3513  (99.7%)
+[07:51:48] Acceptable (8-15)   : 9  (0.3%)
+[07:51:48] Problem (<8 frames) : 0  (0.0%)
+[07:51:48] 
+Frame count distribution:
+[07:51:48]    8 frames :    1 videos  █
+[07:51:48]    9 frames :    1 videos  █
+[07:51:48]   10 frames :    3 videos  ███
+[07:51:48]   12 frames :    2 videos  ██
+[07:51:48]   14 frames :    2 videos  ██
+[07:51:48]   16 frames : 3513 videos  ██████████████████████████████████████████████████
+[07:51:48] 
+No problem videos found
+[07:51:48] 
+Results saved: /workspace/NVIDIA-Video-Classification-Project/video_classification_project/logs/frame_count_results.json
+[07:51:48] 
+VERIFICATION PASSED — proceed to overlap checks

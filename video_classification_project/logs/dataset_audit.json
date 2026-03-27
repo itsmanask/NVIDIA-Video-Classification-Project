@@ -1,0 +1,935 @@
+{
+  "train": {
+    "Animation": {
+      "Animation": {
+        "raw": 150,
+        "extracted": 150,
+        "frames": 2394,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bleach": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cartoon": {
+        "raw": 375,
+        "extracted": 375,
+        "frames": 6000,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dragon Ball": {
+        "raw": 17,
+        "extracted": 17,
+        "frames": 272,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Lego minifigure": {
+        "raw": 21,
+        "extracted": 21,
+        "frames": 336,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Naruto": {
+        "raw": 29,
+        "extracted": 29,
+        "frames": 464,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "One Piece": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Sonic the Hedgehog": {
+        "raw": 18,
+        "extracted": 18,
+        "frames": 288,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "The Walt Disney Company": {
+        "raw": 13,
+        "extracted": 13,
+        "frames": 208,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Flat_Content": {
+      "Chart": {
+        "raw": 91,
+        "extracted": 91,
+        "frames": 1456,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Map": {
+        "raw": 82,
+        "extracted": 82,
+        "frames": 1312,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Poster": {
+        "raw": 11,
+        "extracted": 11,
+        "frames": 176,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Screencast": {
+        "raw": 50,
+        "extracted": 50,
+        "frames": 800,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Text": {
+        "raw": 51,
+        "extracted": 51,
+        "frames": 808,
+        "avg_frames": 15.8,
+        "diff": 0
+      },
+      "Website": {
+        "raw": 216,
+        "extracted": 216,
+        "frames": 3456,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Gaming": {
+      "Action-adventure game": {
+        "raw": 154,
+        "extracted": 154,
+        "frames": 2464,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Battlefield": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Call of Duty": {
+        "raw": 32,
+        "extracted": 32,
+        "frames": 512,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "FIFA 15": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Games": {
+        "raw": 207,
+        "extracted": 206,
+        "frames": 3288,
+        "avg_frames": 16.0,
+        "diff": 1
+      },
+      "Grand Theft Auto": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Grand Theft Auto V": {
+        "raw": 16,
+        "extracted": 16,
+        "frames": 256,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "League of Legends": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Minecraft": {
+        "raw": 26,
+        "extracted": 26,
+        "frames": 416,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "RuneScape": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Video game": {
+        "raw": 204,
+        "extracted": 202,
+        "frames": 3222,
+        "avg_frames": 16.0,
+        "diff": 2
+      },
+      "World of Warcraft": {
+        "raw": 16,
+        "extracted": 15,
+        "frames": 240,
+        "avg_frames": 16.0,
+        "diff": 1
+      }
+    },
+    "Natural_Content": {
+      "Animal": {
+        "raw": 175,
+        "extracted": 175,
+        "frames": 2800,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bird": {
+        "raw": 23,
+        "extracted": 23,
+        "frames": 368,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cat": {
+        "raw": 15,
+        "extracted": 15,
+        "frames": 240,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Chicken": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dog": {
+        "raw": 39,
+        "extracted": 39,
+        "frames": 624,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Farm": {
+        "raw": 9,
+        "extracted": 9,
+        "frames": 144,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fish": {
+        "raw": 46,
+        "extracted": 46,
+        "frames": 736,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fishing": {
+        "raw": 60,
+        "extracted": 59,
+        "frames": 937,
+        "avg_frames": 15.9,
+        "diff": 1
+      },
+      "Garden": {
+        "raw": 7,
+        "extracted": 7,
+        "frames": 112,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Horse": {
+        "raw": 30,
+        "extracted": 30,
+        "frames": 480,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Nature": {
+        "raw": 7,
+        "extracted": 7,
+        "frames": 112,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Outdoor recreation": {
+        "raw": 47,
+        "extracted": 47,
+        "frames": 752,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Pet": {
+        "raw": 149,
+        "extracted": 149,
+        "frames": 2384,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Plant": {
+        "raw": 21,
+        "extracted": 21,
+        "frames": 336,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Tree": {
+        "raw": 7,
+        "extracted": 7,
+        "frames": 112,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Wildlife": {
+        "raw": 7,
+        "extracted": 7,
+        "frames": 112,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    }
+  },
+  "val": {
+    "Animation": {
+      "Animation": {
+        "raw": 43,
+        "extracted": 43,
+        "frames": 688,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bleach": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cartoon": {
+        "raw": 107,
+        "extracted": 107,
+        "frames": 1712,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dragon Ball": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Lego minifigure": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Naruto": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "One Piece": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Sonic the Hedgehog": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "The Walt Disney Company": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Flat_Content": {
+      "Chart": {
+        "raw": 26,
+        "extracted": 26,
+        "frames": 416,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Map": {
+        "raw": 23,
+        "extracted": 23,
+        "frames": 368,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Poster": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Screencast": {
+        "raw": 14,
+        "extracted": 14,
+        "frames": 224,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Text": {
+        "raw": 14,
+        "extracted": 12,
+        "frames": 192,
+        "avg_frames": 16.0,
+        "diff": 2
+      },
+      "Website": {
+        "raw": 61,
+        "extracted": 61,
+        "frames": 976,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Gaming": {
+      "Action-adventure game": {
+        "raw": 44,
+        "extracted": 44,
+        "frames": 704,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Battlefield": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Call of Duty": {
+        "raw": 9,
+        "extracted": 9,
+        "frames": 144,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "FIFA 15": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Games": {
+        "raw": 59,
+        "extracted": 58,
+        "frames": 928,
+        "avg_frames": 16.0,
+        "diff": 1
+      },
+      "Grand Theft Auto": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Grand Theft Auto V": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "League of Legends": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Minecraft": {
+        "raw": 7,
+        "extracted": 7,
+        "frames": 112,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "RuneScape": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Video game": {
+        "raw": 58,
+        "extracted": 57,
+        "frames": 908,
+        "avg_frames": 15.9,
+        "diff": 1
+      },
+      "World of Warcraft": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Natural_Content": {
+      "Animal": {
+        "raw": 50,
+        "extracted": 50,
+        "frames": 800,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bird": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cat": {
+        "raw": 4,
+        "extracted": 4,
+        "frames": 64,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Chicken": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dog": {
+        "raw": 11,
+        "extracted": 11,
+        "frames": 176,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Farm": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fish": {
+        "raw": 13,
+        "extracted": 13,
+        "frames": 208,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fishing": {
+        "raw": 17,
+        "extracted": 17,
+        "frames": 272,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Garden": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Horse": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Nature": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Outdoor recreation": {
+        "raw": 13,
+        "extracted": 13,
+        "frames": 208,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Pet": {
+        "raw": 42,
+        "extracted": 42,
+        "frames": 672,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Plant": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Tree": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Wildlife": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    }
+  },
+  "test": {
+    "Animation": {
+      "Animation": {
+        "raw": 22,
+        "extracted": 22,
+        "frames": 352,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bleach": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cartoon": {
+        "raw": 55,
+        "extracted": 55,
+        "frames": 880,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dragon Ball": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Lego minifigure": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Naruto": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "One Piece": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Sonic the Hedgehog": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "The Walt Disney Company": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Flat_Content": {
+      "Chart": {
+        "raw": 14,
+        "extracted": 14,
+        "frames": 224,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Map": {
+        "raw": 13,
+        "extracted": 13,
+        "frames": 206,
+        "avg_frames": 15.8,
+        "diff": 0
+      },
+      "Poster": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Screencast": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Text": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Website": {
+        "raw": 32,
+        "extracted": 32,
+        "frames": 512,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Gaming": {
+      "Action-adventure game": {
+        "raw": 22,
+        "extracted": 22,
+        "frames": 352,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Battlefield": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Call of Duty": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "FIFA 15": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Games": {
+        "raw": 30,
+        "extracted": 30,
+        "frames": 480,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Grand Theft Auto": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Grand Theft Auto V": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "League of Legends": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Minecraft": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "RuneScape": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Video game": {
+        "raw": 30,
+        "extracted": 30,
+        "frames": 480,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "World of Warcraft": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    },
+    "Natural_Content": {
+      "Animal": {
+        "raw": 25,
+        "extracted": 25,
+        "frames": 400,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Bird": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Cat": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Chicken": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Dog": {
+        "raw": 6,
+        "extracted": 6,
+        "frames": 96,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Farm": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fish": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Fishing": {
+        "raw": 10,
+        "extracted": 10,
+        "frames": 160,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Garden": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Horse": {
+        "raw": 5,
+        "extracted": 5,
+        "frames": 80,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Nature": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Outdoor recreation": {
+        "raw": 8,
+        "extracted": 8,
+        "frames": 128,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Pet": {
+        "raw": 22,
+        "extracted": 22,
+        "frames": 352,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Plant": {
+        "raw": 3,
+        "extracted": 3,
+        "frames": 48,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Tree": {
+        "raw": 2,
+        "extracted": 2,
+        "frames": 32,
+        "avg_frames": 16.0,
+        "diff": 0
+      },
+      "Wildlife": {
+        "raw": 1,
+        "extracted": 1,
+        "frames": 16,
+        "avg_frames": 16.0,
+        "diff": 0
+      }
+    }
+  }
+}

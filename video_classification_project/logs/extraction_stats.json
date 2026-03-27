@@ -1,0 +1,121 @@
+{
+  "config": {
+    "num_frames": 16,
+    "skip_edges": 0.1,
+    "black_thresh": 25,
+    "n_candidates": 48
+  },
+  "results": {
+    "train": {
+      "Animation": {
+        "success": 631,
+        "warn_few_good": 1,
+        "warn_all_black": 1,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Flat_Content": {
+        "success": 498,
+        "warn_few_good": 1,
+        "warn_all_black": 2,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Gaming": {
+        "success": 668,
+        "warn_few_good": 8,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Natural_Content": {
+        "success": 644,
+        "warn_few_good": 2,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      }
+    },
+    "val": {
+      "Animation": {
+        "success": 179,
+        "warn_few_good": 0,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Flat_Content": {
+        "success": 136,
+        "warn_few_good": 2,
+        "warn_all_black": 3,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Gaming": {
+        "success": 187,
+        "warn_few_good": 3,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Natural_Content": {
+        "success": 181,
+        "warn_few_good": 0,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      }
+    },
+    "test": {
+      "Animation": {
+        "success": 97,
+        "warn_few_good": 0,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Flat_Content": {
+        "success": 76,
+        "warn_few_good": 1,
+        "warn_all_black": 1,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Gaming": {
+        "success": 104,
+        "warn_few_good": 0,
+        "warn_all_black": 1,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      },
+      "Natural_Content": {
+        "success": 104,
+        "warn_few_good": 0,
+        "warn_all_black": 0,
+        "skip_short": 0,
+        "fail_open": 0,
+        "fail_read": 0
+      }
+    }
+  },
+  "totals": {
+    "processed": 3531,
+    "success": 3505,
+    "warn_few_good": 18,
+    "warn_all_black": 8,
+    "skip_short": 0,
+    "fail_open": 0,
+    "fail_read": 0
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "config": {
+    "mean": [
+      0.48500001430511475,
+      0.4560000002384186,
+      0.4059999883174896
+    ],
+    "std": [
+      0.2290000021457672,
+      0.2240000069141388,
+      0.22499999403953552
+    ],
+    "num_frames": 16,
+    "frame_size": [
+      224,
+      224
+    ],
+    "output_shape": [
+      16,
+      3,
+      224,
+      224
+    ]
+  },
+  "results": {
+    "train": {
+      "Animation": {
+        "success": 633,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Flat_Content": {
+        "success": 501,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Gaming": {
+        "success": 672,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Natural_Content": {
+        "success": 645,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      }
+    },
+    "val": {
+      "Animation": {
+        "success": 179,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Flat_Content": {
+        "success": 139,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Gaming": {
+        "success": 188,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Natural_Content": {
+        "success": 181,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      }
+    },
+    "test": {
+      "Animation": {
+        "success": 97,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Flat_Content": {
+        "success": 78,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Gaming": {
+        "success": 105,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      },
+      "Natural_Content": {
+        "success": 104,
+        "no_frames": 0,
+        "read_error": 0,
+        "wrong_size": 0
+      }
+    }
+  },
+  "totals": {
+    "processed": 3522,
+    "success": 3522,
+    "no_frames": 0,
+    "read_error": 0,
+    "wrong_size": 0
+  }
+}
