@@ -19,7 +19,7 @@ venv/
 .ipynb_checkpoints/
 
 # Logs & temp files
-*.log
+#*.log
 *.tmp
 *.bak
 
@@ -108,4 +108,4 @@ wandb/
 mlruns/
 
 #Text
-*.txt
+#*.txt

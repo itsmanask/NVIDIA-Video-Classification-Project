@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVIDIA Video Classification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 50%, #f8fafc 100%); }
+        @keyframes pulse-scale { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+        .pulse-animate { animation: pulse-scale 2s ease-in-out infinite; }
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .spin { animation: spin 1s linear infinite; }
+        .video-card { transition: all 0.3s ease; }
+        .video-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px -4px rgba(0,0,0,0.1); }
+        .video-card.selected { border-color: #10b981; background: linear-gradient(135deg,#f0fdf4 0%,#ffffff 100%); }
+        .upload-area { transition: all 0.3s ease; }
+        .upload-area.dragover { border-color:#10b981; background:linear-gradient(135deg,#f0fdf4 0%,#fff 100%); transform:scale(1.02); }
+        .tab-button.active { background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; box-shadow:0 4px 12px rgba(16,185,129,0.3); }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+<div id="app">
+
+    <!-- ── Header ─────────────────────────────────────────────────── -->
+    <div class="border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-6 py-6">
+            <div class="flex items-center gap-4">
+                <img src="nvidia-logo-vert-wht.png" alt="NVIDIA" class="h-16 w-auto">
+                <div>
+                    <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                        NVIDIA Video Classification
+                    </h1>
+                    <p class="text-slate-500 text-sm mt-1">ResNet18 + Temporal Attention · Two-Phase Fine-Tuning · Full Pipeline Inference</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-6 py-8">
+
+        <!-- ── Info Cards ─────────────────────────────────────────── -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                    <h3 class="font-semibold text-slate-800">Architecture</h3>
+                </div>
+                <p class="text-sm text-slate-600">ResNet18 backbone · temporal attention over 16 sampled frames</p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <h3 class="font-semibold text-slate-800">Full Pipeline</h3>
+                </div>
+                <p class="text-sm text-slate-600">Extract frames → resize → ImageNet normalize → classify</p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <h3 class="font-semibold text-slate-800">Test Accuracy</h3>
+                </div>
+                <p class="text-sm text-slate-600">91.38% on held-out test set · 3,531 training videos · 4 classes</p>
+            </div>
+        </div>
+
+        <!-- ── Main Card ──────────────────────────────────────────── -->
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+
+            <!-- Tab bar -->
+            <div id="mode-selection" class="border-b border-slate-200 bg-slate-50">
+                <div class="flex gap-2 p-4">
+                    <button id="tab-dataset" class="tab-button active flex-1 px-6 py-3 rounded-xl font-semibold transition-all">
+                        <div class="flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            Test Dataset
+                        </div>
+                    </button>
+                    <button id="tab-upload" class="tab-button flex-1 px-6 py-3 rounded-xl font-semibold transition-all bg-white">
+                        <div class="flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            Upload Video
+                            <span id="upload-status-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">Checking…</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── DATASET MODE ──────────────────────────────────── -->
+            <div id="dataset-mode">
+                <div id="selection-section" class="p-12">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-3">Select a Video from Test Dataset</h2>
+                        <p class="text-slate-600">The full pipeline (extract → resize → normalize → model) runs from the raw .mp4 file</p>
+                    </div>
+
+                    <div id="loading-videos" class="text-center py-12">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl mb-4 shadow-lg">
+                            <svg class="w-8 h-8 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                        </div>
+                        <p class="text-slate-600">Scanning test dataset…</p>
+                    </div>
+
+                    <div id="video-categories" class="hidden space-y-8"></div>
+
+                    <div id="error-message" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p class="text-red-800 text-sm" id="error-text"></p>
+                    </div>
+
+                    <div id="selected-preview" class="hidden mt-8 bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="p-3 bg-white rounded-xl shadow-sm">
+                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-slate-500">Selected</p>
+                                    <p class="font-semibold text-slate-800 max-w-xs truncate" id="selected-video-name"></p>
+                                </div>
+                            </div>
+                            <button id="analyze-selected-btn"
+                                class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
+                                Analyze Video
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── UPLOAD MODE ───────────────────────────────────── -->
+            <div id="upload-mode" class="hidden p-12">
+                <div class="max-w-2xl mx-auto">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-3">Upload Your Video</h2>
+                        <p class="text-slate-600">Same pipeline runs on any video you upload</p>
+                    </div>
+
+                    <div id="upload-area" class="upload-area border-4 border-dashed border-slate-300 rounded-2xl p-12 text-center cursor-pointer mb-6">
+                        <input type="file" id="video-file-input" accept="video/*" class="hidden">
+                        <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg">
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                        </div>
+                        <p class="text-lg font-semibold text-slate-800 mb-2">Click to upload or drag and drop</p>
+                        <p class="text-slate-500">MP4, AVI, MOV, MKV, WEBM · Max 500 MB</p>
+                    </div>
+
+                    <div id="file-info" class="hidden bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200 mb-6">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="p-3 bg-white rounded-xl shadow-sm">
+                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm text-slate-500">Selected File</p>
+                                <p class="font-semibold text-slate-800" id="file-name"></p>
+                                <p class="text-sm text-slate-600" id="file-size"></p>
+                            </div>
+                            <button id="clear-file-btn" class="text-slate-400 hover:text-slate-600">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button id="analyze-upload-btn"
+                            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
+                            Analyze Uploaded Video
+                        </button>
+                    </div>
+
+                    <div id="upload-error" class="hidden p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p class="text-red-800 text-sm" id="upload-error-text"></p>
+                    </div>
+
+                    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div class="flex gap-3">
+                            <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <div class="text-sm text-blue-800">
+                                <p class="font-semibold mb-1">Processing Pipeline</p>
+                                <p>48 candidate frames sampled via single sequential read (skip first/last 10%) → black frames filtered → 16 final frames selected → parallel resize to 224×224 (INTER_LINEAR) → ImageNet normalized → ResNet18 inference. Identical to training preprocessing. GPU used automatically if available.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── PROCESSING SECTION ────────────────────────────── -->
+            <div id="processing-section" class="hidden p-12">
+                <div class="max-w-2xl mx-auto">
+                    <div class="text-center mb-8">
+                        <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg pulse-animate">
+                            <svg class="w-10 h-10 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800 mb-2">Analyzing Video</h2>
+                        <p class="text-slate-600" id="current-step">Initializing…</p>
+                    </div>
+                    <div class="bg-slate-100 rounded-full h-3 overflow-hidden mb-4 shadow-inner">
+                        <div id="progress-bar" class="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-300 ease-out" style="width:0%"></div>
+                    </div>
+                    <p class="text-center text-slate-700 font-semibold" id="progress-text">0%</p>
+                    <div class="mt-8 space-y-2" id="steps-container"></div>
+                </div>
+            </div>
+
+            <!-- ── RESULTS SECTION ───────────────────────────────── -->
+            <div id="results-section" class="hidden p-12">
+                <div class="max-w-2xl mx-auto">
+
+                    <!-- Prediction header -->
+                    <div class="text-center mb-8">
+                        <div id="result-icon"
+                            class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-6 shadow-xl text-5xl">
+                        </div>
+                        <h2 class="text-4xl font-bold text-slate-800 mb-3" id="result-category"></h2>
+
+                        <!-- Confidence pill -->
+                        <div class="inline-block bg-slate-100 px-6 py-3 rounded-full mb-3">
+                            <p class="text-slate-700 font-semibold">
+                                Confidence: <span class="text-green-600 text-xl font-bold" id="result-confidence"></span>
+                            </p>
+                        </div>
+
+                        <!-- True-class badge (dataset mode only) -->
+                        <div id="true-class-row" class="hidden flex justify-center mt-1 mb-2">
+                            <span id="true-class-badge" class="text-xs px-3 py-1 rounded-full font-semibold"></span>
+                        </div>
+
+                        <!-- Source line -->
+                        <p class="text-slate-500 text-sm mt-2" id="result-source"></p>
+
+                        <!-- Extraction metadata -->
+                        <p class="text-slate-400 text-xs mt-1" id="result-meta"></p>
+                    </div>
+
+                    <!-- Probability bars for all 4 classes -->
+                    <div class="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200 mb-6">
+                        <h3 class="font-semibold text-slate-800 mb-5 flex items-center gap-2">
+                            <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            Class Probabilities
+                        </h3>
+                        <div id="prob-bars"></div>
+                    </div>
+
+                    <button id="reset-btn"
+                        class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                        Analyze Another Video
+                    </button>
+                </div>
+            </div>
+
+        </div><!-- end main card -->
+
+        <!-- Footer -->
+        <div class="mt-12 text-center text-slate-500 text-sm space-y-2 pb-8">
+            <p class="font-medium text-slate-600">Made by Students of</p>
+            <p class="font-semibold text-slate-700">Vishwakarma Institute of Information Technology</p>
+            <p class="text-slate-600">Pune, India 🇮🇳</p>
+            <p class="mt-4">Manas Kulkarni, Rajlakshmi Desai, Samiksha Nalawade</p>
+            <p class="mt-3 italic">Dr. Shripad Bhatlawande</p>
+            <p class="text-slate-500">Project Guide</p>
+        </div>
+
+    </div><!-- end max-w container -->
+</div><!-- end app -->
+
+<script>
+    // ── DOM refs ────────────────────────────────────────────────────
+    const datasetMode       = document.getElementById('dataset-mode');
+    const uploadMode        = document.getElementById('upload-mode');
+    const selectionSection  = document.getElementById('selection-section');
+    const processingSection = document.getElementById('processing-section');
+    const resultsSection    = document.getElementById('results-section');
+    const tabDataset        = document.getElementById('tab-dataset');
+    const tabUpload         = document.getElementById('tab-upload');
+    const errorMessage      = document.getElementById('error-message');
+    const errorText         = document.getElementById('error-text');
+    const loadingVideos     = document.getElementById('loading-videos');
+    const videoCategories   = document.getElementById('video-categories');
+    const selectedPreview   = document.getElementById('selected-preview');
+    const selectedVideoName = document.getElementById('selected-video-name');
+    const uploadArea        = document.getElementById('upload-area');
+    const videoFileInput    = document.getElementById('video-file-input');
+    const fileInfo          = document.getElementById('file-info');
+    const fileName          = document.getElementById('file-name');
+    const fileSize          = document.getElementById('file-size');
+    const uploadError       = document.getElementById('upload-error');
+    const uploadErrorText   = document.getElementById('upload-error-text');
+
+    let selectedVideo = null, selectedFile = null;
+    let externalProcessingAvailable = false;
+    let currentMode = 'dataset';
+
+    const categoryConfig = {
+        Animation      : { color:'from-purple-500 to-pink-500',   emoji:'🎨', border:'border-purple-200' },
+        Gaming         : { color:'from-blue-500 to-cyan-500',     emoji:'🎮', border:'border-blue-200'   },
+        Natural_Content: { color:'from-green-500 to-emerald-500', emoji:'🌿', border:'border-green-200'  },
+        Flat_Content   : { color:'from-orange-500 to-amber-500',  emoji:'📊', border:'border-orange-200' },
+    };
+
+    // Steps shown during processing (both modes run the same pipeline)
+    const pipelineSteps = [
+        'Opening video file',
+        'Sampling 48 candidate frames',
+        'Filtering black / dark frames',
+        'Selecting 16 evenly-spaced frames',
+        'Resizing frames to 224 × 224',
+        'Applying ImageNet normalization',
+        'Running ResNet18 inference',
+        'Finalizing results',
+    ];
+
+    // ── Tab switching ──────────────────────────────────────────────
+    tabDataset.addEventListener('click', () => switchMode('dataset'));
+    tabUpload.addEventListener('click',  () => switchMode('upload'));
+
+    function switchMode(mode) {
+        currentMode = mode;
+        if (mode === 'dataset') {
+            tabDataset.classList.add('active'); tabDataset.classList.remove('bg-white');
+            tabUpload.classList.remove('active'); tabUpload.classList.add('bg-white');
+            datasetMode.classList.remove('hidden'); uploadMode.classList.add('hidden');
+        } else {
+            tabUpload.classList.add('active'); tabUpload.classList.remove('bg-white');
+            tabDataset.classList.remove('active'); tabDataset.classList.add('bg-white');
+            uploadMode.classList.remove('hidden'); datasetMode.classList.add('hidden');
+            if (!externalProcessingAvailable) {
+                uploadArea.style.opacity = '0.5'; uploadArea.style.cursor = 'not-allowed';
+            }
+        }
+    }
+
+    // ── Status check ───────────────────────────────────────────────
+    async function checkStatus() {
+        try {
+            const d = await (await fetch('/api/status')).json();
+            externalProcessingAvailable = d.external_processing_available;
+            const badge = document.getElementById('upload-status-badge');
+            badge.textContent = externalProcessingAvailable ? 'Ready' : 'Unavailable';
+            badge.className = 'text-xs px-2 py-0.5 rounded-full ' +
+                (externalProcessingAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700');
+        } catch(e) { console.error('Status check failed', e); }
+    }
+
+    // ── Load video list ────────────────────────────────────────────
+    async function loadVideos() {
+        try {
+            const d = await (await fetch('/api/videos')).json();
+            if (d.success) { renderCategories(d.videos); }
+            else { loadingVideos.classList.add('hidden'); showError(d.error || 'Failed to load videos'); }
+        } catch(e) {
+            loadingVideos.classList.add('hidden'); showError('Failed to reach server: ' + e.message);
+        }
+    }
+
+    function renderCategories(videos) {
+        loadingVideos.classList.add('hidden');
+        videoCategories.classList.remove('hidden');
+
+        videoCategories.innerHTML = Object.entries(videos).map(([cat, keys]) => {
+            const cfg = categoryConfig[cat] || categoryConfig.Natural_Content;
+            // Display name: strip the  "<class>/<sub>/"  prefix → just the stem
+            const cards = keys.map(key => {
+                const stem = key.split('/').pop();
+                return `
+                <div class="video-card bg-white rounded-xl p-4 border-2 ${cfg.border} cursor-pointer"
+                     data-video="${key}" data-category="${cat}">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-gradient-to-br ${cfg.color} rounded-lg flex-shrink-0">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium text-slate-800 truncate text-sm">${stem}</p>
+                            <p class="text-xs text-slate-500">${cat.replace('_',' ')}</p>
+                        </div>
+                        <svg class="w-5 h-5 text-green-600 hidden check-icon flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                </div>`;
+            }).join('');
+
+            return `
+            <div>
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="text-3xl">${cfg.emoji}</span>
+                    <h3 class="text-xl font-bold text-slate-800">${cat.replace('_',' ')}</h3>
+                    <span class="text-sm text-slate-500">(${keys.length} videos)</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
+            </div>`;
+        }).join('');
+
+        document.querySelectorAll('.video-card').forEach(c =>
+            c.addEventListener('click', () => selectVideo(c)));
+    }
+
+    function selectVideo(card) {
+        document.querySelectorAll('.video-card').forEach(c => {
+            c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden');
+        });
+        card.classList.add('selected'); card.querySelector('.check-icon').classList.remove('hidden');
+        selectedVideo = card.dataset.video;
+        selectedVideoName.textContent = selectedVideo.split('/').pop();
+        selectedPreview.classList.remove('hidden');
+        selectedPreview.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+
+    // ── Upload handlers ────────────────────────────────────────────
+    uploadArea.addEventListener('click', () => {
+        if (externalProcessingAvailable) videoFileInput.click();
+        else showUploadError('Video processing not available — model checkpoint missing.');
+    });
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); if (externalProcessingAvailable) uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', e => {
+        e.preventDefault(); uploadArea.classList.remove('dragover');
+        if (externalProcessingAvailable && e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
+    });
+    videoFileInput.addEventListener('change', function() { if (this.files.length > 0) handleFileSelect(this.files[0]); });
+
+    function handleFileSelect(file) {
+        const ok = ['video/mp4','video/avi','video/x-msvideo','video/quicktime','video/x-matroska','video/webm'];
+        if (!ok.includes(file.type) && !file.name.match(/\.(mp4|avi|mov|mkv|webm)$/i)) {
+            showUploadError('Unsupported file type. Use MP4, AVI, MOV, MKV or WEBM.'); return;
+        }
+        if (file.size > 500 * 1024 * 1024) { showUploadError('File exceeds 500 MB.'); return; }
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileSize.textContent = fmtSize(file.size);
+        fileInfo.classList.remove('hidden');
+        uploadError.classList.add('hidden');
+    }
+
+    document.getElementById('clear-file-btn').addEventListener('click', e => {
+        e.stopPropagation(); selectedFile = null;
+        fileInfo.classList.add('hidden'); videoFileInput.value = '';
+    });
+
+    function fmtSize(b) {
+        if (b < 1024) return b + ' B';
+        if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+        return (b/1048576).toFixed(1) + ' MB';
+    }
+
+    // ── Analyze ────────────────────────────────────────────────────
+    document.getElementById('analyze-selected-btn').addEventListener('click', () => analyzeVideo('dataset'));
+    document.getElementById('analyze-upload-btn').addEventListener('click',   () => analyzeVideo('upload'));
+    document.getElementById('reset-btn').addEventListener('click', resetApp);
+
+    // Active SSE connection — closed on reset / completion
+    let _activeSSE = null;
+
+    async function analyzeVideo(mode) {
+        if (mode === 'dataset' && !selectedVideo) return;
+        if (mode === 'upload'  && !selectedFile)  return;
+
+        // ── Show processing section ───────────────────────────────
+        selectionSection.classList.add('hidden');
+        uploadMode.classList.add('hidden');
+        datasetMode.classList.add('hidden');
+        document.getElementById('mode-selection').classList.add('hidden');
+        processingSection.classList.remove('hidden');
+
+        // Render step list (all dimmed initially)
+        const steps = pipelineSteps;
+        const sc = document.getElementById('steps-container');
+        sc.innerHTML = steps.map((s, i) => `
+            <div id="step-${i}" class="flex items-center gap-3 p-3 rounded-lg transition-all opacity-40">
+                <div class="w-2 h-2 rounded-full bg-slate-300"></div>
+                <span class="text-sm font-medium text-slate-700">${s}</span>
+            </div>`).join('');
+
+        updateProgress(0, null);
+
+        // ── POST to server — get job_id immediately ───────────────
+        let jobId;
+        try {
+            const fd  = new FormData();
+            let   url;
+            if (mode === 'dataset') { fd.append('selected_video', selectedVideo); url = '/api/classify'; }
+            else                    { fd.append('video', selectedFile);            url = '/api/classify_external'; }
+
+            const resp = await fetch(url, { method:'POST', body:fd });
+            if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error || 'Unknown error');
+            jobId = data.job_id;
+        } catch(e) {
+            if (mode === 'dataset') showError('Error: ' + e.message);
+            else showUploadError('Error: ' + e.message);
+            resetApp();
+            return;
+        }
+
+        // ── Stream real progress via SSE ──────────────────────────
+        // Maps server step_name strings → pipeline step indices so the
+        // correct step lights up green as each phase completes.
+        const stepMap = {
+            'Probing video…'          : 0,
+            'Building frame indices…' : 0,
+            'Extracting frames…'      : 1,
+            'Filtering black frames…' : 2,
+            'Preprocessing frames…'   : 3,   // covers resize + normalise
+            'Building tensor…'        : 5,
+            'Running model inference…': 6,
+            'Done'                    : 7,
+        };
+
+        if (_activeSSE) { _activeSSE.close(); _activeSSE = null; }
+        const es = new EventSource(`/api/progress/${jobId}`);
+        _activeSSE = es;
+
+        let lastStepIdx = -1;
+
+        es.onmessage = (e) => {
+            let d;
+            try { d = JSON.parse(e.data); } catch { return; }
+
+            // ── Progress bar + % text ─────────────────────────────
+            const pct    = d.progress || 0;
+            const etaSec = d.eta_sec;
+            updateProgress(pct, etaSec);
+
+            // ── Current step label ────────────────────────────────
+            const stepName = d.step_name || '';
+            document.getElementById('current-step').textContent = stepName;
+
+            // ── Light up steps based on server step_name ──────────
+            const targetIdx = stepMap[stepName] ?? -1;
+            if (targetIdx > lastStepIdx) {
+                // Mark everything up to (but not including) target as complete
+                for (let i = lastStepIdx + 1; i < targetIdx; i++) updateStep(i, 'complete');
+                // Mark target as active
+                updateStep(targetIdx, 'active');
+                lastStepIdx = targetIdx;
+            }
+
+            // ── Done ──────────────────────────────────────────────
+            if (d.status === 'done') {
+                es.close(); _activeSSE = null;
+                updateProgress(100, 0);
+                steps.forEach((_, i) => updateStep(i, 'complete'));
+                setTimeout(() => showResults(d.result), 400);
+            }
+
+            // ── Error ─────────────────────────────────────────────
+            if (d.status === 'error') {
+                es.close(); _activeSSE = null;
+                if (mode === 'dataset') showError('Error: ' + (d.error || 'Unknown error'));
+                else showUploadError('Error: ' + (d.error || 'Unknown error'));
+                resetApp();
+            }
+        };
+
+        es.onerror = () => {
+            es.close(); _activeSSE = null;
+            if (mode === 'dataset') showError('Lost connection to server.');
+            else showUploadError('Lost connection to server.');
+            resetApp();
+        };
+    }
+
+    function updateStep(i, state) {
+        const el = document.getElementById(`step-${i}`); if (!el) return;
+        const dot = el.querySelector('.w-2');
+        if (state === 'active') {
+            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
+            dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+        } else {
+            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-slate-50 opacity-60';
+            dot.className = 'w-2 h-2 rounded-full bg-green-400';
+        }
+    }
+
+    // etaSec: number → show ETA, null/undefined → show % only
+    function updateProgress(p, etaSec) {
+        document.getElementById('progress-bar').style.width = p + '%';
+        let etaStr;
+        if (etaSec != null && etaSec > 0) {
+            const m = Math.floor(etaSec / 60);
+            const s = Math.round(etaSec) % 60;
+            const etaFmt = m > 0 ? `${m}m ${s}s` : `${Math.round(etaSec)}s`;
+            etaStr = `${Math.round(p)}%  ·  ETA ${etaFmt}`;
+        } else {
+            etaStr = Math.round(p) + '%';
+        }
+        document.getElementById('progress-text').textContent = etaStr;
+    }
+
+    // ── Render results ─────────────────────────────────────────────
+    function showResults(r) {
+        processingSection.classList.add('hidden');
+        resultsSection.classList.remove('hidden');
+
+        const cfg = categoryConfig[r.category] || categoryConfig.Natural_Content;
+
+        // Icon + category
+        const icon = document.getElementById('result-icon');
+        icon.className = `inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br ${cfg.color} rounded-3xl mb-6 shadow-xl text-5xl`;
+        icon.textContent = cfg.emoji;
+        document.getElementById('result-category').textContent  = r.category.replace('_', ' ');
+        document.getElementById('result-confidence').textContent = r.confidence.toFixed(2) + '%';
+
+        // True-class badge (dataset mode)
+        const badge     = document.getElementById('true-class-badge');
+        const badgeRow  = document.getElementById('true-class-row');
+        if (r.source === 'dataset' && r.true_class) {
+            const correct = r.true_class === r.category;
+            badge.textContent = (correct ? '✓ Correct  · ' : '✗ Wrong  · ') +
+                                'True class: ' + r.true_class.replace('_', ' ');
+            badge.className = 'text-xs px-3 py-1 rounded-full font-semibold ' +
+                (correct ? 'bg-green-100 text-green-800 border border-green-300'
+                         : 'bg-red-100 text-red-800 border border-red-300');
+            badgeRow.classList.remove('hidden');
+        } else {
+            badgeRow.classList.add('hidden');
+        }
+
+        // Source
+        document.getElementById('result-source').innerHTML =
+            r.source === 'external'
+                ? `📤 <strong>Uploaded:</strong> ${r.video_name}`
+                : `📁 <strong>Test Dataset:</strong> ${r.video_name}`;
+
+        // Extraction meta
+        const statusLabel = { ok:'clean', few_good:'few good frames', all_black:'black-frame fallback' };
+        const timePart    = r.processing_time_s != null ? ` · ${r.processing_time_s}s` : '';
+        const devPart     = r.device ? ` on ${r.device}` : '';
+        document.getElementById('result-meta').textContent =
+            `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}${timePart}${devPart}`;
+
+        // Probability bars (sorted descending)
+        const sorted = Object.entries(r.all_scores).sort((a, b) => b[1] - a[1]);
+        document.getElementById('prob-bars').innerHTML = sorted.map(([cat, prob]) => {
+            const c = categoryConfig[cat] || categoryConfig.Natural_Content;
+            const isTop = cat === r.category;
+            return `
+            <div class="flex items-center gap-3 mb-4">
+                <div class="flex items-center gap-2 w-36">
+                    <span class="text-lg">${c.emoji}</span>
+                    <span class="text-sm font-medium text-slate-700 truncate">${cat.replace('_',' ')}</span>
+                </div>
+                <div class="flex-1 bg-slate-200 rounded-full h-5 overflow-hidden">
+                    <div class="h-full bg-gradient-to-r ${c.color} transition-all flex items-center justify-end pr-2"
+                         style="width:${Math.max(prob, 1)}%">
+                        ${isTop ? '<span class="text-white text-xs font-bold">★</span>' : ''}
+                    </div>
+                </div>
+                <div class="w-14 text-sm font-bold text-slate-700 text-right">${prob.toFixed(1)}%</div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Reset ──────────────────────────────────────────────────────
+    function resetApp() {
+        selectedVideo = null; selectedFile = null;
+        document.getElementById('mode-selection').classList.remove('hidden');
+        if (currentMode === 'dataset') {
+            datasetMode.classList.remove('hidden'); selectionSection.classList.remove('hidden');
+            uploadMode.classList.add('hidden');
+        } else {
+            uploadMode.classList.remove('hidden'); datasetMode.classList.add('hidden');
+        }
+        processingSection.classList.add('hidden');
+        resultsSection.classList.add('hidden');
+        selectedPreview.classList.add('hidden');
+        fileInfo.classList.add('hidden');
+        videoFileInput.value = '';
+        document.querySelectorAll('.video-card').forEach(c => {
+            c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden');
+        });
+        hideError(); uploadError.classList.add('hidden');
+    }
+
+    function showError(m)       { errorText.textContent = m; errorMessage.classList.remove('hidden'); }
+    function hideError()        { errorMessage.classList.add('hidden'); }
+    function showUploadError(m) { uploadErrorText.textContent = m; uploadError.classList.remove('hidden'); }
+
+    checkStatus();
+    loadVideos();
+</script>
+</body>
+</html>
