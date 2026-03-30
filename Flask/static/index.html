@@ -203,7 +203,7 @@
                             </svg>
                             <div class="text-sm text-blue-800">
                                 <p class="font-semibold mb-1">Processing Pipeline</p>
-                                <p>48 candidate frames sampled via single sequential read (skip first/last 10%) → black frames filtered → 16 final frames selected → parallel resize to 224×224 (INTER_LINEAR) → ImageNet normalized → ResNet18 inference. Identical to training preprocessing. GPU used automatically if available.</p>
+                                <p>48 candidate frames sampled (skip first/last 10%) → black frames filtered → 16 final frames selected → resized to 224×224 (INTER_LINEAR) → ImageNet normalized → ResNet18 inference. Identical to training. ~10–30s on CPU.</p>
                             </div>
                         </div>
                     </div>
@@ -482,32 +482,45 @@
     document.getElementById('analyze-upload-btn').addEventListener('click',   () => analyzeVideo('upload'));
     document.getElementById('reset-btn').addEventListener('click', resetApp);
 
-    // Active SSE connection — closed on reset / completion
+    // Holds the active SSE connection so we can close it on reset/error
     let _activeSSE = null;
+
+    // Maps server step_name strings → pipeline step index (0-based)
+    // so the correct step lights up as each server phase is reached.
+    const stepMap = {
+        'Starting…'              : 0,
+        'Probing video…'         : 0,
+        'Building frame indices…': 0,
+        'Extracting frames…'     : 1,
+        'Filtering black frames…': 2,
+        'Preprocessing on GPU…'  : 4,
+        'Building tensor…'       : 5,
+        'Running model inference…': 6,
+        'Done'                        : 7,
+    };
 
     async function analyzeVideo(mode) {
         if (mode === 'dataset' && !selectedVideo) return;
         if (mode === 'upload'  && !selectedFile)  return;
 
-        // ── Show processing section ───────────────────────────────
+        // ── Show processing UI ────────────────────────────────────────
         selectionSection.classList.add('hidden');
         uploadMode.classList.add('hidden');
         datasetMode.classList.add('hidden');
         document.getElementById('mode-selection').classList.add('hidden');
         processingSection.classList.remove('hidden');
 
-        // Render step list (all dimmed initially)
+        // Render all steps dimmed
         const steps = pipelineSteps;
-        const sc = document.getElementById('steps-container');
+        const sc    = document.getElementById('steps-container');
         sc.innerHTML = steps.map((s, i) => `
             <div id="step-${i}" class="flex items-center gap-3 p-3 rounded-lg transition-all opacity-40">
                 <div class="w-2 h-2 rounded-full bg-slate-300"></div>
                 <span class="text-sm font-medium text-slate-700">${s}</span>
             </div>`).join('');
-
         updateProgress(0, null);
 
-        // ── POST to server — get job_id immediately ───────────────
+        // ── POST → get job_id immediately (non-blocking) ──────────────
         let jobId;
         try {
             const fd  = new FormData();
@@ -515,62 +528,48 @@
             if (mode === 'dataset') { fd.append('selected_video', selectedVideo); url = '/api/classify'; }
             else                    { fd.append('video', selectedFile);            url = '/api/classify_external'; }
 
-            const resp = await fetch(url, { method:'POST', body:fd });
+            const resp = await fetch(url, { method: 'POST', body: fd });
             if (!resp.ok) throw new Error(`Server error ${resp.status}`);
             const data = await resp.json();
             if (!data.success) throw new Error(data.error || 'Unknown error');
             jobId = data.job_id;
-        } catch(e) {
+        } catch (e) {
             if (mode === 'dataset') showError('Error: ' + e.message);
             else showUploadError('Error: ' + e.message);
             resetApp();
             return;
         }
 
-        // ── Stream real progress via SSE ──────────────────────────
-        // Maps server step_name strings → pipeline step indices so the
-        // correct step lights up green as each phase completes.
-        const stepMap = {
-            'Probing video…'          : 0,
-            'Building frame indices…' : 0,
-            'Extracting frames…'      : 1,
-            'Filtering black frames…' : 2,
-            'Preprocessing frames…'   : 3,   // covers resize + normalise
-            'Building tensor…'        : 5,
-            'Running model inference…': 6,
-            'Done'                    : 7,
-        };
-
+        // ── Stream real-time progress via SSE ─────────────────────────
+        // The server sends a JSON event every ~300ms with:
+        //   { progress, step_name, eta_sec, status, result }
         if (_activeSSE) { _activeSSE.close(); _activeSSE = null; }
-        const es = new EventSource(`/api/progress/${jobId}`);
+        const es = new EventSource('/api/progress/' + jobId);
         _activeSSE = es;
 
         let lastStepIdx = -1;
 
-        es.onmessage = (e) => {
+        es.onmessage = function(e) {
             let d;
             try { d = JSON.parse(e.data); } catch { return; }
 
-            // ── Progress bar + % text ─────────────────────────────
-            const pct    = d.progress || 0;
-            const etaSec = d.eta_sec;
-            updateProgress(pct, etaSec);
+            // ── Progress bar + ETA ────────────────────────────────────
+            updateProgress(d.progress || 0, d.eta_sec);
 
-            // ── Current step label ────────────────────────────────
+            // ── Current step text ─────────────────────────────────────
             const stepName = d.step_name || '';
             document.getElementById('current-step').textContent = stepName;
 
-            // ── Light up steps based on server step_name ──────────
-            const targetIdx = stepMap[stepName] ?? -1;
+            // ── Light up steps as each phase is reached ───────────────
+            const targetIdx = (stepName in stepMap) ? stepMap[stepName] : -1;
             if (targetIdx > lastStepIdx) {
-                // Mark everything up to (but not including) target as complete
+                // Mark skipped steps as complete, target as active
                 for (let i = lastStepIdx + 1; i < targetIdx; i++) updateStep(i, 'complete');
-                // Mark target as active
                 updateStep(targetIdx, 'active');
                 lastStepIdx = targetIdx;
             }
 
-            // ── Done ──────────────────────────────────────────────
+            // ── Job finished ──────────────────────────────────────────
             if (d.status === 'done') {
                 es.close(); _activeSSE = null;
                 updateProgress(100, 0);
@@ -578,7 +577,7 @@
                 setTimeout(() => showResults(d.result), 400);
             }
 
-            // ── Error ─────────────────────────────────────────────
+            // ── Job errored ───────────────────────────────────────────
             if (d.status === 'error') {
                 es.close(); _activeSSE = null;
                 if (mode === 'dataset') showError('Error: ' + (d.error || 'Unknown error'));
@@ -587,16 +586,16 @@
             }
         };
 
-        es.onerror = () => {
+        es.onerror = function() {
             es.close(); _activeSSE = null;
-            if (mode === 'dataset') showError('Lost connection to server.');
-            else showUploadError('Lost connection to server.');
+            if (mode === 'dataset') showError('Lost connection to server. Please try again.');
+            else showUploadError('Lost connection to server. Please try again.');
             resetApp();
         };
     }
 
     function updateStep(i, state) {
-        const el = document.getElementById(`step-${i}`); if (!el) return;
+        const el = document.getElementById('step-' + i); if (!el) return;
         const dot = el.querySelector('.w-2');
         if (state === 'active') {
             el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
@@ -607,19 +606,17 @@
         }
     }
 
-    // etaSec: number → show ETA, null/undefined → show % only
-    function updateProgress(p, etaSec) {
+    // p  : 0-100
+    // eta: seconds (number) → show "ETA Xs / Xm Xs", null → hide ETA
+    function updateProgress(p, eta) {
         document.getElementById('progress-bar').style.width = p + '%';
-        let etaStr;
-        if (etaSec != null && etaSec > 0) {
-            const m = Math.floor(etaSec / 60);
-            const s = Math.round(etaSec) % 60;
-            const etaFmt = m > 0 ? `${m}m ${s}s` : `${Math.round(etaSec)}s`;
-            etaStr = `${Math.round(p)}%  ·  ETA ${etaFmt}`;
-        } else {
-            etaStr = Math.round(p) + '%';
+        let label = Math.round(p) + '%';
+        if (eta != null && eta > 0) {
+            const m = Math.floor(eta / 60);
+            const s = Math.round(eta) % 60;
+            label += '  ·  ETA ' + (m > 0 ? m + 'm ' + s + 's' : s + 's');
         }
-        document.getElementById('progress-text').textContent = etaStr;
+        document.getElementById('progress-text').textContent = label;
     }
 
     // ── Render results ─────────────────────────────────────────────
@@ -659,10 +656,8 @@
 
         // Extraction meta
         const statusLabel = { ok:'clean', few_good:'few good frames', all_black:'black-frame fallback' };
-        const timePart    = r.processing_time_s != null ? ` · ${r.processing_time_s}s` : '';
-        const devPart     = r.device ? ` on ${r.device}` : '';
         document.getElementById('result-meta').textContent =
-            `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}${timePart}${devPart}`;
+            `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}`;
 
         // Probability bars (sorted descending)
         const sorted = Object.entries(r.all_scores).sort((a, b) => b[1] - a[1]);
