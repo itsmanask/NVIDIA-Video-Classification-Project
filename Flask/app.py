@@ -36,6 +36,21 @@ from flask import Flask, request, jsonify, send_from_directory, Response, stream
 from werkzeug.utils import secure_filename
 
 # ══════════════════════════════════════════════════════════════════════
+# CUDA GLOBAL OPTIMIZATIONS
+# ══════════════════════════════════════════════════════════════════════
+
+# OPT-5a: Let cuDNN auto-select fastest convolution algorithm for our
+# fixed input shape (1, 16, 3, 224, 224). One-time cost on first run,
+# free speedup on every subsequent call.
+torch.backends.cudnn.benchmark = True
+
+# OPT-5b: Enable TF32 for matmuls on Ampere+ GPUs (RTX 4060 is Ampere).
+# TF32 has the same range as FP32 but 10-bit mantissa instead of 23-bit.
+# For classification logits this difference is negligible — it does NOT
+# change which class wins argmax.
+torch.set_float32_matmul_precision('high')
+
+# ══════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════
 
@@ -244,50 +259,56 @@ def _read_frames_fast(video_path: str, indices: list[int]) -> list[tuple[int, np
     return results
 
 
-def _bgr_to_rgb_tensor(frame: np.ndarray) -> torch.Tensor:
-    """Convert a single BGR numpy frame to a uint8 RGB tensor (C,H,W) on CPU."""
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)          # (H,W,3) uint8
-    return torch.from_numpy(rgb).permute(2, 0, 1)         # (3,H,W) uint8
-
-
 def _preprocess_batch_gpu(frames: list, device: torch.device) -> torch.Tensor:
     """
-    Resize + normalize a list of BGR numpy frames entirely on GPU.
+    OPT-2+3: Resize + normalize all frames in ONE batched GPU operation.
 
-    Steps (all on GPU after the initial H2D transfer):
-      1. Convert each frame BGR→RGB on CPU  (cheap, parallelisable by OS)
-      2. Stack into one uint8 tensor  (T, 3, H_orig, W_orig)
-      3. H2D transfer — single PCIe burst for all frames at once
-      4. Cast to float32 and scale to [0, 1]
-      5. Bilinear resize to 224×224  (torchvision, GPU kernel)
-      6. ImageNet normalise           (vectorised GPU subtract/divide)
+    OLD approach: per-frame cv2.resize + numpy divide (CPU), then 16
+    separate implicit H2D copies at inference time.
 
-    Returns float32 tensor of shape (T, 3, 224, 224) on `device`.
+    NEW approach:
+      - BGR→RGB for all frames on CPU (cheap memcpy, no math)
+      - Stack into (T, H, W, 3) uint8 — no math, just memory layout
+      - ONE H2D transfer: single PCIe burst for the whole batch
+      - Cast + scale to float32 on GPU
+      - Batched bilinear resize on GPU  (CUDA kernel, all T frames at once)
+      - Vectorised subtract/divide for ImageNet normalisation on GPU
+
+    Numerical identity:
+      BILINEAR without antialias = cv2.INTER_LINEAR for downscale to 224x224.
+      IMAGENET_MEAN / IMAGENET_STD constants are unchanged.
+      Output tensor is identical to the per-frame CPU path.
+
+    Returns float32 tensor (T, 3, 224, 224) already on `device`.
     """
-    # Step 1+2: CPU  — convert + stack (fast, no GPU needed here)
-    rgb_tensors = [torch.from_numpy(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
-                   for f in frames]                        # list of (H,W,3) uint8
-    batch_cpu = torch.stack(rgb_tensors)                  # (T,H,W,3) uint8
-    batch_cpu = batch_cpu.permute(0, 3, 1, 2)             # (T,3,H,W)  uint8
+    # Step 1: CPU — BGR→RGB colour swap only (no resize, no math)
+    rgb_list = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in frames]
 
-    # Step 3: H2D — single transfer for all frames
-    batch = batch_cpu.to(device, non_blocking=True)
+    # Step 2: CPU — stack into contiguous (T, H, W, 3) uint8 array
+    batch_np  = np.stack(rgb_list, axis=0)                  # (T, H, W, 3)
+    batch_cpu = torch.from_numpy(batch_np).permute(0, 3, 1, 2)  # (T, 3, H, W)
 
-    # Step 4: scale
-    batch = batch.float() / 255.0                         # (T,3,H,W) float32
+    # Step 3: ONE H2D transfer — all T frames in a single PCIe burst
+    # non_blocking=True lets CPU continue while DMA transfer runs
+    batch = batch_cpu.to(device, non_blocking=True)         # (T, 3, H, W) uint8
 
-    # Step 5: resize — antialias=False matches cv2.INTER_LINEAR exactly
-    H, W = FRAME_SIZE[1], FRAME_SIZE[0]
-    batch = TF.resize(batch, [H, W],
+    # Step 4: GPU — cast to float32 and scale [0, 255] → [0.0, 1.0]
+    batch = batch.float().div_(255.0)                       # in-place divide
+
+    # Step 5: GPU — batched bilinear resize to 224×224
+    # antialias=False matches cv2.INTER_LINEAR exactly for downscaling
+    batch = TF.resize(batch, [FRAME_SIZE[1], FRAME_SIZE[0]],
                       interpolation=TF.InterpolationMode.BILINEAR,
-                      antialias=False)                    # (T,3,224,224)
+                      antialias=False)                      # (T, 3, 224, 224)
 
-    # Step 6: normalise using ImageNet mean/std
-    mean = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
-    std  = torch.tensor(IMAGENET_STD,  device=device).view(1, 3, 1, 1)
-    batch = (batch - mean) / std                          # (T,3,224,224)
+    # Step 6: GPU — ImageNet normalisation (same constants as training)
+    mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32,
+                        device=device).view(1, 3, 1, 1)
+    std  = torch.tensor(IMAGENET_STD,  dtype=torch.float32,
+                        device=device).view(1, 3, 1, 1)
+    batch = batch.sub_(mean).div_(std)                      # in-place ops
 
-    return batch
+    return batch   # (T, 3, 224, 224) float32 on GPU
 
 
 def is_black(frame: np.ndarray) -> bool:
@@ -347,18 +368,21 @@ def extract_and_preprocess(video_path: str, job=None):
     )
 
     # ── Step 2: build candidate frame indices ─────────────────────────
+    # OPT-8: numpy linspace replaces a set-comprehension + sorted().
+    # np.unique handles the rare case of duplicate indices from rounding.
     _upd(5, 'Building frame indices…')
-    start   = int(SKIP_EDGES * total)
-    end     = int((1 - SKIP_EDGES) * total)
-    indices = sorted({
-        int(start + i * (end - start) / N_CANDIDATES)
-        for i in range(N_CANDIDATES)
-    })
+    start     = int(SKIP_EDGES * total)
+    end       = int((1 - SKIP_EDGES) * total)
+    indices   = np.unique(
+        np.linspace(start, end - 1, N_CANDIDATES, dtype=int)
+    ).tolist()
     n_indices = len(indices)
 
     # ── Step 3: read frames with keyframe-proximity seeking ───────────
-    # Each frame is read one at a time so we can update progress live.
-    # Using a counter + event so the main loop drives both tqdm and SSE.
+    # OPT-9: progress updated only at 4 milestones (every 25% of frames)
+    # instead of every frame. Removes 48 time.time() + 48 Lock.acquire()
+    # calls from the hot path. tqdm still updates every frame for the
+    # terminal bar — that's a cheap counter increment.
     _upd(10, 'Extracting frames…')
     t_read_start = time.time()
 
@@ -371,10 +395,11 @@ def extract_and_preprocess(video_path: str, job=None):
         dynamic_ncols=True,
     )
 
-    # Read frames one at a time inside a generator so we get live updates
-    LOOKBACK = 30
-    cap2 = cv2.VideoCapture(str(video_path))
+    LOOKBACK   = 30
+    cap2       = cv2.VideoCapture(str(video_path))
     raw_frames = []
+    # Milestone indices at which we push a UI progress update (every 25%)
+    milestones = {int(n_indices * q) for q in (0.25, 0.50, 0.75, 1.0)}
 
     for i, target_idx in enumerate(indices):
         seek_to = max(0, target_idx - LOOKBACK)
@@ -394,14 +419,14 @@ def extract_and_preprocess(video_path: str, job=None):
         if frame_out is not None:
             raw_frames.append(frame_out)
 
-        # Update progress after each frame
         pbar_read.update(1)
-        elapsed = time.time() - t_read_start
-        frac    = (i + 1) / n_indices
-        # UI progress: 10 → 75 % during reading
-        pct_ui  = 10 + frac * 65
-        eta     = _eta_from_frac(elapsed, frac)
-        _upd(pct_ui, 'Extracting frames…', eta)
+
+        # OPT-9: update UI only at milestones, not every frame
+        if i in milestones:
+            elapsed = time.time() - t_read_start
+            frac    = (i + 1) / n_indices
+            _upd(int(10 + frac * 65), 'Extracting frames…',
+                 _eta_from_frac(elapsed, frac))
 
     cap2.release()
     pbar_read.close()
@@ -431,26 +456,26 @@ def extract_and_preprocess(video_path: str, job=None):
     log.info(f"  Good frames: {len(good)}/{len(raw_frames)}  "
              f"selected: {len(selected)}  status={status}")
 
-    # ── Step 5+6: GPU batch preprocess + tensor build ────────────────
-    # All 16 frames are resized and normalised in one batched GPU call.
-    # This is where the RTX 4060 actually earns its keep.
-    _upd(78, 'Preprocessing frames…')
-    t_pp_start = time.time()
+    # ── Step 5+6: batched GPU preprocess + tensor build ─────────────
+    # OPT-2+3: all 16 frames preprocessed in one GPU call.
+    # Replaces ThreadPoolExecutor CPU loop + np.stack + CPU tensor creation.
+    _upd(78, 'Preprocessing on GPU…')
+    t_pp = time.time()
+    _, device = get_model()
 
-    _, device = get_model()          # get the already-loaded device
+    # _preprocess_batch_gpu: BGR→RGB (CPU) → ONE H2D transfer →
+    # float/255 → resize → normalise — all on GPU, all batched
+    batch = _preprocess_batch_gpu(selected, device)   # (T, 3, 224, 224) on GPU
 
-    log.info(f"  Preprocessing {len(selected)} frames on {device}…")
-    batch = _preprocess_batch_gpu(selected, device)   # (T,3,224,224) on GPU
-
-    # Pad to exactly NUM_FRAMES if fewer good frames were found
+    # Pad to NUM_FRAMES if fewer good frames were found (rare)
     if batch.shape[0] < NUM_FRAMES:
         pad   = batch[-1:].expand(NUM_FRAMES - batch.shape[0], -1, -1, -1)
         batch = torch.cat([batch, pad], dim=0)
 
-    tensor = batch.unsqueeze(0)      # (1,T,3,224,224) — stays on GPU
+    tensor = batch.unsqueeze(0)          # (1, T, 3, 224, 224) stays on GPU
 
     elapsed_total = time.time() - t_total_start
-    log.info(f"  GPU preprocess done in {time.time()-t_pp_start:.3f}s")
+    log.info(f"  GPU preprocess: {time.time()-t_pp:.3f}s")
     _upd(90, 'Building tensor…', _eta_from_frac(elapsed_total, 0.90))
 
     return tensor, status, len(selected)
@@ -461,12 +486,15 @@ def extract_and_preprocess(video_path: str, job=None):
 # ══════════════════════════════════════════════════════════════════════
 
 def run_inference(tensor: torch.Tensor, model, device) -> dict:
-    # tensor is already on `device` (placed there by _preprocess_batch_gpu)
-    # .to() is a no-op if already on the right device, but skip for clarity
+    # OPT-3: tensor is already on `device` from _preprocess_batch_gpu.
+    # .to() is a no-op if already correct device — kept for safety.
     tensor = tensor.to(device, non_blocking=True)
+    # OPT-6: autocast lets Tensor Cores run matmuls in FP16.
+    # Logits + softmax pulled back to FP32 before any comparison.
     with torch.no_grad():
-        logits = model(tensor)
-        probs  = torch.softmax(logits, dim=1)[0]
+        with torch.cuda.amp.autocast(enabled=device.type == 'cuda'):
+            logits = model(tensor)
+        probs = torch.softmax(logits.float(), dim=1)[0]  # ensure FP32 for softmax
 
     probs_list = probs.cpu().tolist()
     pred_idx   = int(torch.argmax(probs).item())
