@@ -33,7 +33,12 @@
                     <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
                         NVIDIA Video Classification
                     </h1>
-                    <p class="text-slate-500 text-sm mt-1">ResNet18 + Temporal Attention · Two-Phase Fine-Tuning · Full Pipeline Inference</p>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-xs font-medium text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full">Animation</span>
+                        <span class="text-xs font-medium text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full">Flat Content</span>
+                        <span class="text-xs font-medium text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full">Gaming</span>
+                        <span class="text-xs font-medium text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full">Natural Content</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -42,34 +47,88 @@
     <div class="max-w-6xl mx-auto px-6 py-8">
 
         <!-- ── Info Cards ─────────────────────────────────────────── -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+
+            <!-- Architecture -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
                     <h3 class="font-semibold text-slate-800">Architecture</h3>
                 </div>
-                <p class="text-sm text-slate-600">ResNet18 backbone · temporal attention over 16 sampled frames</p>
+                <p class="text-sm text-slate-600">ResNet18 · Temporal attention pooling · Two-phase fine-tuning</p>
             </div>
+
+            <!-- Pipeline -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                     <h3 class="font-semibold text-slate-800">Full Pipeline</h3>
                 </div>
-                <p class="text-sm text-slate-600">Extract frames → resize → ImageNet normalize → classify</p>
+                <p class="text-sm text-slate-600">Raw video → frame sampling → resize → normalize → classify</p>
             </div>
+
+            <!-- Accuracy -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    <h3 class="font-semibold text-slate-800">Test Accuracy</h3>
+                    <h3 class="font-semibold text-slate-800">Accuracy</h3>
                 </div>
-                <p class="text-sm text-slate-600">91.38% on held-out test set · 3,531 training videos · 4 classes</p>
+                <div class="flex items-center gap-3">
+                    <div>
+                        <span class="text-sm text-slate-600 font-medium">Test&nbsp;</span>
+                        <span class="text-sm font-bold text-slate-800">91.38%</span>
+                    </div>
+                    <div class="w-px h-4 bg-slate-300"></div>
+                    <div>
+                        <span class="text-sm text-slate-600 font-medium">Val&nbsp;</span>
+                        <span class="text-sm font-bold text-slate-800">90.52%</span>
+                    </div>
+                </div>
             </div>
+
+        </div>
+
+        <!-- ── Dataset & Hardware strip ───────────────────────────── -->
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 mb-7">
+
+            <!-- Dataset pills -->
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    3,531 training videos
+                </span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                    4 classes
+                </span>
+            </div>
+
+            <!-- Divider -->
+            <div class="w-px h-5 bg-slate-200 hidden sm:block"></div>
+
+            <!-- Hardware group -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-medium text-slate-400">Trained on</span>
+                <span class="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1.5 rounded-full border border-green-200">
+                    <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+                    NVIDIA Server A100 · 40 GB GPU
+                </span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/></svg>
+                    CPU: Intel Xeon Gold 5215
+                </span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h16M4 17h7"/></svg>
+                    RAM: 251 GB
+                </span>
+            </div>
+
         </div>
 
         <!-- ── Main Card ──────────────────────────────────────────── -->
@@ -103,7 +162,7 @@
                 <div id="selection-section" class="p-12">
                     <div class="text-center mb-8">
                         <h2 class="text-2xl font-bold text-slate-800 mb-3">Select a Video from Test Dataset</h2>
-                        <p class="text-slate-600">The full pipeline (extract → resize → normalize → model) runs from the raw .mp4 file</p>
+                        <p class="text-slate-600">The full pipeline runs from the raw .mp4 file</p>
                     </div>
 
                     <div id="loading-videos" class="text-center py-12">
@@ -151,7 +210,7 @@
                 <div class="max-w-2xl mx-auto">
                     <div class="text-center mb-8">
                         <h2 class="text-2xl font-bold text-slate-800 mb-3">Upload Your Video</h2>
-                        <p class="text-slate-600">Same pipeline runs on any video you upload</p>
+
                     </div>
 
                     <div id="upload-area" class="upload-area border-4 border-dashed border-slate-300 rounded-2xl p-12 text-center cursor-pointer mb-6">
@@ -196,17 +255,7 @@
                         <p class="text-red-800 text-sm" id="upload-error-text"></p>
                     </div>
 
-                    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                        <div class="flex gap-3">
-                            <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            <div class="text-sm text-blue-800">
-                                <p class="font-semibold mb-1">Processing Pipeline</p>
-                                <p>48 candidate frames sampled (skip first/last 10%) → black frames filtered → 16 final frames selected → resized to 224×224 (INTER_LINEAR) → ImageNet normalized → ResNet18 inference. Identical to training. ~10–30s on CPU.</p>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
             </div>
 
@@ -488,15 +537,15 @@
     // Maps server step_name strings → pipeline step index (0-based)
     // so the correct step lights up as each server phase is reached.
     const stepMap = {
-        'Starting…'              : 0,
-        'Probing video…'         : 0,
-        'Building frame indices…': 0,
-        'Extracting frames…'     : 1,
-        'Filtering black frames…': 2,
-        'Preprocessing on GPU…'  : 4,
-        'Building tensor…'       : 5,
-        'Running model inference…': 6,
-        'Done'                        : 7,
+        'Starting…'               : 0,
+        'Probing video…'          : 0,
+        'Building frame indices…' : 0,
+        'Extracting frames…'      : 1,
+        'Filtering black frames…' : 2,
+        'Preprocessing on GPU…'   : 3,
+        'Building tensor…'        : 4,
+        'Running model inference…': 5,
+        'Done'                    : 7,
     };
 
     async function analyzeVideo(mode) {
@@ -563,8 +612,11 @@
             // ── Light up steps as each phase is reached ───────────────
             const targetIdx = (stepName in stepMap) ? stepMap[stepName] : -1;
             if (targetIdx > lastStepIdx) {
-                // Mark skipped steps as complete, target as active
+                // Mark the previously active step as complete
+                if (lastStepIdx >= 0) updateStep(lastStepIdx, 'complete');
+                // Mark any in-between steps as complete too
                 for (let i = lastStepIdx + 1; i < targetIdx; i++) updateStep(i, 'complete');
+                // Light up the current step as active
                 updateStep(targetIdx, 'active');
                 lastStepIdx = targetIdx;
             }
@@ -597,12 +649,18 @@
     function updateStep(i, state) {
         const el = document.getElementById('step-' + i); if (!el) return;
         const dot = el.querySelector('.w-2');
+        const txt = el.querySelector('span');
         if (state === 'active') {
             el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
             dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
-        } else {
-            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-slate-50 opacity-60';
+            if (txt) { txt.className = 'text-sm font-medium text-slate-800'; txt.textContent = txt.textContent.replace(/^✓ /, ''); }
+        } else if (state === 'complete') {
+            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-400';
             dot.className = 'w-2 h-2 rounded-full bg-green-400';
+            if (txt && !txt.textContent.startsWith('✓')) { txt.className = 'text-sm font-medium text-green-700'; txt.textContent = '✓ ' + txt.textContent; }
+        } else {
+            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all opacity-40';
+            dot.className = 'w-2 h-2 rounded-full bg-slate-300';
         }
     }
 
