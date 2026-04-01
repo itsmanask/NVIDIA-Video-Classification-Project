@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NVIDIA Video Classification</title>
+    <link rel="icon" type="image/png" href="/nvidia-logo-vert-wht.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -19,6 +21,33 @@
         .upload-area { transition: all 0.3s ease; }
         .upload-area.dragover { border-color:#10b981; background:linear-gradient(135deg,#f0fdf4 0%,#fff 100%); transform:scale(1.02); }
         .tab-button.active { background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; box-shadow:0 4px 12px rgba(16,185,129,0.3); }
+        .result-tab { border-bottom:2px solid transparent; color:#64748b; cursor:pointer; padding:10px 20px; font-size:0.875rem; transition:all 0.2s; white-space:nowrap; }
+        .result-tab.active { border-bottom-color:#10b981; color:#059669; font-weight:600; }
+        .result-tab:hover:not(.active) { color:#334155; border-bottom-color:#cbd5e1; }
+        .frame-thumb { transition:all 0.2s; cursor:pointer; border:2px solid transparent; }
+        .frame-thumb:hover { transform:scale(1.05); }
+        .metric-card { background:white; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+        /* Frame modal */
+        #frame-modal { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); backdrop-filter:blur(6px); align-items:center; justify-content:center; }
+        #frame-modal.open { display:flex; }
+        @keyframes modal-in { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        #frame-modal.open .modal-card { animation: modal-in 0.22s cubic-bezier(0.34,1.2,0.64,1) forwards; }
+        /* Nav arrows */
+        .modal-nav { position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; background:white; border-radius:50%; box-shadow:0 2px 12px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.15s; border:1px solid #e2e8f0; z-index:10; }
+        .modal-nav:hover { background:#f0fdf4; border-color:#10b981; box-shadow:0 4px 16px rgba(0,0,0,0.22); }
+        .modal-nav:disabled { opacity:0.25; cursor:not-allowed; pointer-events:none; }
+        .modal-nav-prev { left:-18px; }
+        .modal-nav-next { right:-18px; }
+        /* Download fail modal */
+        #dl-fail-modal { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.6); backdrop-filter:blur(6px); align-items:center; justify-content:center; }
+        #dl-fail-modal.open { display:flex; }
+        @keyframes cross-pop  { 0%{transform:scale(0.3);opacity:0} 65%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+        @keyframes cross-draw { 0%{stroke-dashoffset:40} 100%{stroke-dashoffset:0} }
+        .cross-icon { animation: cross-pop 0.4s cubic-bezier(.34,1.56,.64,1) forwards; }
+        .cross-line { stroke-dasharray:40; stroke-dashoffset:40; animation: cross-draw 0.3s 0.28s ease forwards; }
+        /* Download toast */
+        #dl-toast { position:fixed; top:80px; left:50%; transform:translateX(-50%) translateY(-20px); opacity:0; transition:all 0.35s ease; pointer-events:none; z-index:9000; }
+        #dl-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
     </style>
 </head>
 <body class="gradient-bg min-h-screen">
@@ -44,60 +73,105 @@
         </div>
     </div>
 
+    <!-- Download complete toast -->
+    <div id="dl-toast">
+        <div class="flex items-center gap-3 bg-white border border-green-200 shadow-lg rounded-xl px-5 py-3">
+            <span class="text-green-600 text-lg">✓</span>
+            <span class="text-sm font-semibold text-slate-800">Download complete — starting analysis…</span>
+        </div>
+    </div>
+
+    <!-- Download failed modal -->
+    <div id="dl-fail-modal" onclick="closeDlFailModal(event)">
+        <div class="bg-white rounded-2xl shadow-2xl w-full mx-4 overflow-hidden" style="max-width:400px" onclick="event.stopPropagation()">
+            <!-- header with close X -->
+            <div class="flex items-center justify-end px-5 pt-4">
+                <button onclick="closeDlFailModal()" class="text-slate-300 hover:text-slate-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex flex-col items-center px-8 pb-4 pt-2">
+                <div class="cross-icon w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-5">
+                    <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round">
+                        <line class="cross-line" x1="6" y1="6" x2="18" y2="18"/>
+                        <line class="cross-line" x1="18" y1="6" x2="6" y2="18" style="animation-delay:0.38s"/>
+                    </svg>
+                </div>
+                <h3 class="font-bold text-slate-800 text-lg mb-1">Download Failed</h3>
+                <p class="text-sm text-slate-500 text-center mb-6" id="dl-fail-msg">An error occurred while downloading the video.</p>
+                <button onclick="closeDlFailModal()" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-4 py-2.5 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all text-sm">
+                    Try Another URL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frame detail modal -->
+    <div id="frame-modal" onclick="closeFrameModal(event)">
+        <!-- nav arrows sit outside the card, inside the overlay -->
+        <div class="relative w-full flex items-center justify-center" style="max-width:600px;padding:0 28px;margin:0 16px">
+            <button id="modal-prev" class="modal-nav modal-nav-prev" onclick="event.stopPropagation();navigateFrame(-1)">
+                <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button id="modal-next" class="modal-nav modal-nav-next" onclick="event.stopPropagation();navigateFrame(1)">
+                <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <!-- Card -->
+            <div class="modal-card bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col" style="max-height:88vh" onclick="event.stopPropagation()">
+                <!-- Header -->
+                <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg" id="modal-title">Frame —</h3>
+                        <p class="text-xs text-slate-400 mt-0.5" id="modal-subtitle"></p>
+                    </div>
+                    <button onclick="closeFrameModal()" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <!-- Scrollable body -->
+                <div class="overflow-y-auto flex-1 px-6 pt-5 pb-6 space-y-4">
+                    <img id="modal-img" src="" alt="Frame" class="w-full rounded-xl object-cover shadow-sm" style="max-height:240px">
+                    <div id="modal-metrics"></div>
+                </div>
+                <!-- Footer nav indicator -->
+                <div class="flex items-center justify-center gap-1.5 py-3 border-t border-slate-100 flex-shrink-0" id="modal-dots"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="max-w-6xl mx-auto px-6 py-8">
 
         <!-- ── Info Cards ─────────────────────────────────────────── -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-
-            <!-- Architecture -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                    </svg>
+                    <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                     <h3 class="font-semibold text-slate-800">Architecture</h3>
                 </div>
                 <p class="text-sm text-slate-600">ResNet18 · Temporal attention pooling · Two-phase fine-tuning</p>
             </div>
-
-            <!-- Pipeline -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                    </svg>
+                    <svg class="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     <h3 class="font-semibold text-slate-800">Full Pipeline</h3>
                 </div>
                 <p class="text-sm text-slate-600">Raw video → frame sampling → resize → normalize → classify</p>
             </div>
-
-            <!-- Accuracy -->
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                    <svg class="w-5 h-5 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
+                    <svg class="w-5 h-5 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     <h3 class="font-semibold text-slate-800">Accuracy</h3>
                 </div>
                 <div class="flex items-center gap-3">
-                    <div>
-                        <span class="text-sm text-slate-600 font-medium">Test&nbsp;</span>
-                        <span class="text-sm font-bold text-slate-800">91.38%</span>
-                    </div>
+                    <div><span class="text-sm text-slate-600 font-medium">Test&nbsp;</span><span class="text-sm font-bold text-slate-800">91.38%</span></div>
                     <div class="w-px h-4 bg-slate-300"></div>
-                    <div>
-                        <span class="text-sm text-slate-600 font-medium">Val&nbsp;</span>
-                        <span class="text-sm font-bold text-slate-800">90.52%</span>
-                    </div>
+                    <div><span class="text-sm text-slate-600 font-medium">Val&nbsp;</span><span class="text-sm font-bold text-slate-800">90.52%</span></div>
                 </div>
             </div>
-
         </div>
 
         <!-- ── Dataset & Hardware strip ───────────────────────────── -->
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 mb-7">
-
-            <!-- Dataset pills -->
             <div class="flex items-center gap-2">
                 <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
@@ -108,11 +182,7 @@
                     4 classes
                 </span>
             </div>
-
-            <!-- Divider -->
             <div class="w-px h-5 bg-slate-200 hidden sm:block"></div>
-
-            <!-- Hardware group -->
             <div class="flex items-center gap-2">
                 <span class="text-xs font-medium text-slate-400">Trained on</span>
                 <span class="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1.5 rounded-full border border-green-200">
@@ -128,30 +198,30 @@
                     RAM: 251 GB
                 </span>
             </div>
-
         </div>
 
         <!-- ── Main Card ──────────────────────────────────────────── -->
-        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        <div id="main-card" class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
 
-            <!-- Tab bar -->
+            <!-- Input mode tabs -->
             <div id="mode-selection" class="border-b border-slate-200 bg-slate-50">
                 <div class="flex gap-2 p-4">
-                    <button id="tab-dataset" class="tab-button active flex-1 px-6 py-3 rounded-xl font-semibold transition-all">
+                    <button id="tab-dataset" class="tab-button active flex-1 px-4 py-3 rounded-xl font-semibold transition-all">
                         <div class="flex items-center justify-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                            </svg>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                             Test Dataset
                         </div>
                     </button>
-                    <button id="tab-upload" class="tab-button flex-1 px-6 py-3 rounded-xl font-semibold transition-all bg-white">
+                    <button id="tab-upload" class="tab-button flex-1 px-4 py-3 rounded-xl font-semibold transition-all bg-white">
                         <div class="flex items-center justify-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                            </svg>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                             Upload Video
-                            <span id="upload-status-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">Checking…</span>
+                        </div>
+                    </button>
+                    <button id="tab-url" class="tab-button flex-1 px-4 py-3 rounded-xl font-semibold transition-all bg-white">
+                        <div class="flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                            URL / YouTube
                         </div>
                     </button>
                 </div>
@@ -164,40 +234,29 @@
                         <h2 class="text-2xl font-bold text-slate-800 mb-3">Select a Video from Test Dataset</h2>
                         <p class="text-slate-600">The full pipeline runs from the raw .mp4 file</p>
                     </div>
-
                     <div id="loading-videos" class="text-center py-12">
                         <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl mb-4 shadow-lg">
-                            <svg class="w-8 h-8 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                            </svg>
+                            <svg class="w-8 h-8 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         </div>
                         <p class="text-slate-600">Scanning test dataset…</p>
                     </div>
-
                     <div id="video-categories" class="hidden space-y-8"></div>
-
                     <div id="error-message" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <p class="text-red-800 text-sm" id="error-text"></p>
                     </div>
-
                     <div id="selected-preview" class="hidden mt-8 bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-4">
                                 <div class="p-3 bg-white rounded-xl shadow-sm">
-                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
+                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                 </div>
                                 <div>
                                     <p class="text-sm text-slate-500">Selected</p>
                                     <p class="font-semibold text-slate-800 max-w-xs truncate" id="selected-video-name"></p>
                                 </div>
                             </div>
-                            <button id="analyze-selected-btn"
-                                class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
+                            <button id="analyze-selected-btn" class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
                                 Analyze Video
                             </button>
                         </div>
@@ -210,26 +269,19 @@
                 <div class="max-w-2xl mx-auto">
                     <div class="text-center mb-8">
                         <h2 class="text-2xl font-bold text-slate-800 mb-3">Upload Your Video</h2>
-
                     </div>
-
                     <div id="upload-area" class="upload-area border-4 border-dashed border-slate-300 rounded-2xl p-12 text-center cursor-pointer mb-6">
                         <input type="file" id="video-file-input" accept="video/*" class="hidden">
                         <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg">
-                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                            </svg>
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                         </div>
                         <p class="text-lg font-semibold text-slate-800 mb-2">Click to upload or drag and drop</p>
                         <p class="text-slate-500">MP4, AVI, MOV, MKV, WEBM · Max 500 MB</p>
                     </div>
-
                     <div id="file-info" class="hidden bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200 mb-6">
                         <div class="flex items-center gap-4 mb-4">
                             <div class="p-3 bg-white rounded-xl shadow-sm">
-                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
+                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             </div>
                             <div class="flex-1">
                                 <p class="text-sm text-slate-500">Selected File</p>
@@ -237,25 +289,56 @@
                                 <p class="text-sm text-slate-600" id="file-size"></p>
                             </div>
                             <button id="clear-file-btn" class="text-slate-400 hover:text-slate-600">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                </svg>
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
-                        <button id="analyze-upload-btn"
-                            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
+                        <button id="analyze-upload-btn" class="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl">
                             Analyze Uploaded Video
                         </button>
                     </div>
-
                     <div id="upload-error" class="hidden p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <p class="text-red-800 text-sm" id="upload-error-text"></p>
                     </div>
+                </div>
+            </div>
 
-
+            <!-- ── URL MODE ──────────────────────────────────────── -->
+            <div id="url-mode" class="hidden p-12">
+                <div class="max-w-2xl mx-auto">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-3">Classify from URL</h2>
+                        <p class="text-slate-600">Paste a YouTube or direct video URL — yt-dlp downloads it automatically</p>
+                    </div>
+                    <div class="flex gap-3 mb-4">
+                        <input id="url-input" type="url" placeholder="https://www.youtube.com/watch?v=…"
+                            class="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500 transition-colors">
+                        <button id="analyze-url-btn"
+                            class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg whitespace-nowrap">
+                            Analyze
+                        </button>
+                    </div>
+                    <div id="url-error" class="hidden p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p class="text-red-800 text-sm" id="url-error-text">yt-dlp is not available on this server.</p>
+                    </div>
+                    <!-- Download progress card (visible while yt-dlp is downloading) -->
+                    <div id="url-download-progress" class="hidden mt-5 bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-5 border border-slate-200">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
+                                <svg class="w-5 h-5 text-green-600 spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-slate-800" id="dl-step-label">Downloading video…</p>
+                                <p class="text-xs text-slate-500 mt-0.5" id="dl-eta-label">Starting download…</p>
+                            </div>
+                            <span class="text-sm font-bold text-green-700" id="dl-pct-label">0%</span>
+                        </div>
+                        <div class="bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                            <div id="dl-progress-bar" class="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-300 ease-out rounded-full" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-3 text-center">Supports YouTube, Vimeo, and any site yt-dlp handles. Downloads at ≤720p.</p>
                 </div>
             </div>
 
@@ -264,9 +347,7 @@
                 <div class="max-w-2xl mx-auto">
                     <div class="text-center mb-8">
                         <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg pulse-animate">
-                            <svg class="w-10 h-10 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                            </svg>
+                            <svg class="w-10 h-10 text-white spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         </div>
                         <h2 class="text-2xl font-bold text-slate-800 mb-2">Analyzing Video</h2>
                         <p class="text-slate-600" id="current-step">Initializing…</p>
@@ -280,52 +361,135 @@
             </div>
 
             <!-- ── RESULTS SECTION ───────────────────────────────── -->
-            <div id="results-section" class="hidden p-12">
-                <div class="max-w-2xl mx-auto">
-
-                    <!-- Prediction header -->
-                    <div class="text-center mb-8">
-                        <div id="result-icon"
-                            class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-6 shadow-xl text-5xl">
-                        </div>
-                        <h2 class="text-4xl font-bold text-slate-800 mb-3" id="result-category"></h2>
-
-                        <!-- Confidence pill -->
-                        <div class="inline-block bg-slate-100 px-6 py-3 rounded-full mb-3">
-                            <p class="text-slate-700 font-semibold">
-                                Confidence: <span class="text-green-600 text-xl font-bold" id="result-confidence"></span>
-                            </p>
-                        </div>
-
-                        <!-- True-class badge (dataset mode only) -->
-                        <div id="true-class-row" class="hidden flex justify-center mt-1 mb-2">
-                            <span id="true-class-badge" class="text-xs px-3 py-1 rounded-full font-semibold"></span>
-                        </div>
-
-                        <!-- Source line -->
-                        <p class="text-slate-500 text-sm mt-2" id="result-source"></p>
-
-                        <!-- Extraction metadata -->
-                        <p class="text-slate-400 text-xs mt-1" id="result-meta"></p>
+            <div id="results-section" class="hidden">
+                <div class="border-b border-slate-200 bg-slate-50 px-6">
+                    <div class="flex overflow-x-auto">
+                        <button class="result-tab active" id="rtab-result" onclick="switchResultTab('result')">Classification</button>
+                        <button class="result-tab" id="rtab-insights" onclick="switchResultTab('insights')">Model Insights</button>
                     </div>
-
-                    <!-- Probability bars for all 4 classes -->
-                    <div class="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200 mb-6">
-                        <h3 class="font-semibold text-slate-800 mb-5 flex items-center gap-2">
-                            <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                            Class Probabilities
-                        </h3>
-                        <div id="prob-bars"></div>
-                    </div>
-
-                    <button id="reset-btn"
-                        class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
-                        Analyze Another Video
-                    </button>
                 </div>
-            </div>
+
+                <!-- Classification panel -->
+                <div id="rpanel-result" class="p-12">
+                    <div class="max-w-2xl mx-auto">
+                        <div class="text-center mb-8">
+                            <div id="result-icon" class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-6 shadow-xl text-5xl"></div>
+                            <h2 class="text-4xl font-bold text-slate-800 mb-3" id="result-category"></h2>
+                            <div class="inline-block bg-slate-100 px-6 py-3 rounded-full mb-3">
+                                <p class="text-slate-700 font-semibold">Confidence: <span class="text-green-600 text-xl font-bold" id="result-confidence"></span></p>
+                            </div>
+                            <div id="true-class-row" class="hidden flex justify-center mt-1 mb-2">
+                                <span id="true-class-badge" class="text-xs px-3 py-1 rounded-full font-semibold"></span>
+                            </div>
+                            <p class="text-slate-500 text-sm mt-2" id="result-source"></p>
+                            <p class="text-slate-400 text-xs mt-1" id="result-meta"></p>
+                        </div>
+                        <div class="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200 mb-6">
+                            <h3 class="font-semibold text-slate-800 mb-5 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                                Class Probabilities
+                            </h3>
+                            <div id="prob-bars"></div>
+                        </div>
+                        <button id="reset-btn" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                            Analyze Another Video
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Model Insights panel -->
+                <div id="rpanel-insights" class="hidden p-8">
+                    <div class="max-w-4xl mx-auto space-y-8">
+
+                        <!-- Frame grid -->
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="font-bold text-slate-800 text-lg">Frames the Model Looked At</h3>
+                                <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Attention Weights</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mb-4">Brighter green border = more influence. ⭐ Top 3 highlighted. <span class="text-emerald-600 font-medium">Click any frame for per-frame insights.</span></p>
+                            <div id="frame-grid" class="grid grid-cols-4 sm:grid-cols-8 gap-2"></div>
+                        </div>
+
+                        <!-- Attention chart -->
+                        <div class="metric-card">
+                            <div class="flex items-start justify-between mb-1">
+                                <div>
+                                    <h4 class="font-semibold text-slate-800">Per-Frame Attention</h4>
+                                    <p class="text-xs text-slate-500 mt-0.5">How much each of the 16 frames contributed to the decision</p>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <p class="text-xs text-slate-500">Attention Entropy</p>
+                                    <p class="text-sm font-bold" id="entropy-val">—</p>
+                                    <p class="text-xs text-slate-400" id="entropy-label">—</p>
+                                </div>
+                            </div>
+                            <div class="h-40 mt-4"><canvas id="chart-attention"></canvas></div>
+                            <div class="mt-3 flex gap-4 text-xs text-slate-500">
+                                <span>🔍 <strong>Low entropy</strong> → focused on key frames</span>
+                                <span>🌊 <strong>High entropy</strong> → spread evenly (less certain)</span>
+                            </div>
+                        </div>
+
+                        <!-- RGB channels -->
+                        <div class="metric-card">
+                            <h4 class="font-semibold text-slate-800 mb-1">Average Color (R · G · B)</h4>
+                            <p class="text-xs text-slate-500 mb-4">Mean brightness per channel. Gaming tends blue/dark, Nature tends green, Animation tends vivid.</p>
+                            <div class="grid grid-cols-3 gap-4 mb-4">
+                                <div class="text-center">
+                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#fca5a5,#ef4444)"></div>
+                                    <p class="text-xs text-slate-500">Red</p><p class="font-bold text-slate-800" id="rgb-r-val">—</p>
+                                </div>
+                                <div class="text-center">
+                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#86efac,#22c55e)"></div>
+                                    <p class="text-xs text-slate-500">Green</p><p class="font-bold text-slate-800" id="rgb-g-val">—</p>
+                                </div>
+                                <div class="text-center">
+                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#93c5fd,#3b82f6)"></div>
+                                    <p class="text-xs text-slate-500">Blue</p><p class="font-bold text-slate-800" id="rgb-b-val">—</p>
+                                </div>
+                            </div>
+                            <div class="h-44"><canvas id="chart-rgb"></canvas></div>
+                        </div>
+
+                        <!-- Edge density -->
+                        <div class="metric-card">
+                            <div class="flex items-start justify-between mb-1">
+                                <div>
+                                    <h4 class="font-semibold text-slate-800">Edge Density per Frame</h4>
+                                    <p class="text-xs text-slate-500 mt-0.5">Laplacian variance — high = detailed/sharp (Gaming, Animation). Low = simple (Flat Content).</p>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <p class="text-xs text-slate-500">Avg Edge Score</p>
+                                    <p class="text-sm font-bold" id="edge-avg-val">—</p>
+                                    <p class="text-xs text-slate-400" id="edge-quality-label">—</p>
+                                </div>
+                            </div>
+                            <div class="h-40 mt-4"><canvas id="chart-edges"></canvas></div>
+                        </div>
+
+                        <!-- Saturation -->
+                        <div class="metric-card">
+                            <div class="flex items-start justify-between mb-1">
+                                <div>
+                                    <h4 class="font-semibold text-slate-800">Color Saturation per Frame</h4>
+                                    <p class="text-xs text-slate-500 mt-0.5">0 = grey, 1 = fully saturated. Animation is high, Natural is medium, Flat is low.</p>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <p class="text-xs text-slate-500">Avg Saturation</p>
+                                    <p class="text-sm font-bold" id="sat-avg-val">—</p>
+                                </div>
+                            </div>
+                            <div class="h-40 mt-4"><canvas id="chart-sat"></canvas></div>
+                        </div>
+
+                        <button id="reset-btn-insights" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg mt-2">
+                            Analyze Another Video
+                        </button>
+                    </div>
+                </div>
+
+            </div><!-- end results-section -->
 
         </div><!-- end main card -->
 
@@ -339,18 +503,20 @@
             <p class="text-slate-500">Project Guide</p>
         </div>
 
-    </div><!-- end max-w container -->
-</div><!-- end app -->
+    </div>
+</div>
 
 <script>
     // ── DOM refs ────────────────────────────────────────────────────
     const datasetMode       = document.getElementById('dataset-mode');
     const uploadMode        = document.getElementById('upload-mode');
+    const urlMode           = document.getElementById('url-mode');
     const selectionSection  = document.getElementById('selection-section');
     const processingSection = document.getElementById('processing-section');
     const resultsSection    = document.getElementById('results-section');
     const tabDataset        = document.getElementById('tab-dataset');
     const tabUpload         = document.getElementById('tab-upload');
+    const tabUrl            = document.getElementById('tab-url');
     const errorMessage      = document.getElementById('error-message');
     const errorText         = document.getElementById('error-text');
     const loadingVideos     = document.getElementById('loading-videos');
@@ -364,10 +530,16 @@
     const fileSize          = document.getElementById('file-size');
     const uploadError       = document.getElementById('upload-error');
     const uploadErrorText   = document.getElementById('upload-error-text');
+    const mainCard          = document.getElementById('main-card');
 
     let selectedVideo = null, selectedFile = null;
     let externalProcessingAvailable = false;
+    let ytdlpAvailable = false;
     let currentMode = 'dataset';
+    let _activeSSE = null;
+    let _lastResult = null, _insightsRendered = false;
+
+    let chartAttention = null, chartRgb = null, chartEdges = null, chartSat = null;
 
     const categoryConfig = {
         Animation      : { color:'from-purple-500 to-pink-500',   emoji:'🎨', border:'border-purple-200' },
@@ -376,7 +548,6 @@
         Flat_Content   : { color:'from-orange-500 to-amber-500',  emoji:'📊', border:'border-orange-200' },
     };
 
-    // Steps shown during processing (both modes run the same pipeline)
     const pipelineSteps = [
         'Opening video file',
         'Sampling 48 candidate frames',
@@ -385,26 +556,73 @@
         'Resizing frames to 224 × 224',
         'Applying ImageNet normalization',
         'Running ResNet18 inference',
+        'Extracting visual metrics',
         'Finalizing results',
     ];
 
-    // ── Tab switching ──────────────────────────────────────────────
+    const stepMap = {
+        'Starting…'                  : 0,
+        'Probing video…'             : 0,
+        'Building frame indices…'    : 0,
+        'Extracting frames…'         : 1,
+        'Filtering black frames…'    : 2,
+        'Preprocessing on GPU…'      : 3,
+        'Building tensor…'           : 4,
+        'Running model inference…'   : 5,
+        'Extracting visual metrics…' : 6,
+        'Encoding frame thumbnails…' : 7,
+        'Done'                       : 8,
+    };
+
+    // ── Smooth scroll helper ───────────────────────────────────────
+    function scrollToCard(block = 'center') {
+        mainCard.scrollIntoView({ behavior: 'smooth', block });
+    }
+
+    // ── Input tab switching ────────────────────────────────────────
     tabDataset.addEventListener('click', () => switchMode('dataset'));
-    tabUpload.addEventListener('click',  () => switchMode('upload'));
+    tabUpload.addEventListener('click',  () => {
+        switchMode('upload');
+        // Scroll to centre of upload area
+        setTimeout(() => uploadArea.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    });
+    tabUrl.addEventListener('click', () => {
+        switchMode('url');
+        // Scroll to centre of URL input area
+        setTimeout(() => document.getElementById('url-input').scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    });
 
     function switchMode(mode) {
         currentMode = mode;
+        [tabDataset, tabUpload, tabUrl].forEach(t => { t.classList.remove('active'); t.classList.add('bg-white'); });
+        [datasetMode, uploadMode, urlMode].forEach(p => p.classList.add('hidden'));
+
         if (mode === 'dataset') {
             tabDataset.classList.add('active'); tabDataset.classList.remove('bg-white');
-            tabUpload.classList.remove('active'); tabUpload.classList.add('bg-white');
-            datasetMode.classList.remove('hidden'); uploadMode.classList.add('hidden');
-        } else {
+            datasetMode.classList.remove('hidden');
+        } else if (mode === 'upload') {
             tabUpload.classList.add('active'); tabUpload.classList.remove('bg-white');
-            tabDataset.classList.remove('active'); tabDataset.classList.add('bg-white');
-            uploadMode.classList.remove('hidden'); datasetMode.classList.add('hidden');
+            uploadMode.classList.remove('hidden');
             if (!externalProcessingAvailable) {
                 uploadArea.style.opacity = '0.5'; uploadArea.style.cursor = 'not-allowed';
             }
+        } else {
+            tabUrl.classList.add('active'); tabUrl.classList.remove('bg-white');
+            urlMode.classList.remove('hidden');
+        }
+    }
+
+    // ── Result sub-tab switching ───────────────────────────────────
+    function switchResultTab(tab) {
+        ['result','insights'].forEach(t => {
+            document.getElementById('rtab-'  + t).classList.remove('active');
+            document.getElementById('rpanel-'+ t).classList.add('hidden');
+        });
+        document.getElementById('rtab-'  + tab).classList.add('active');
+        document.getElementById('rpanel-'+ tab).classList.remove('hidden');
+        if (tab === 'insights' && _lastResult && !_insightsRendered) {
+            renderInsights(_lastResult);
+            _insightsRendered = true;
         }
     }
 
@@ -413,10 +631,12 @@
         try {
             const d = await (await fetch('/api/status')).json();
             externalProcessingAvailable = d.external_processing_available;
-            const badge = document.getElementById('upload-status-badge');
-            badge.textContent = externalProcessingAvailable ? 'Ready' : 'Unavailable';
-            badge.className = 'text-xs px-2 py-0.5 rounded-full ' +
-                (externalProcessingAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700');
+            ytdlpAvailable = d.ytdlp_available;
+            if (!ytdlpAvailable) {
+                document.getElementById('url-input').disabled = true;
+                document.getElementById('analyze-url-btn').disabled = true;
+                document.getElementById('url-error').classList.remove('hidden');
+            }
         } catch(e) { console.error('Status check failed', e); }
     }
 
@@ -424,7 +644,7 @@
     async function loadVideos() {
         try {
             const d = await (await fetch('/api/videos')).json();
-            if (d.success) { renderCategories(d.videos); }
+            if (d.success) renderCategories(d.videos);
             else { loadingVideos.classList.add('hidden'); showError(d.error || 'Failed to load videos'); }
         } catch(e) {
             loadingVideos.classList.add('hidden'); showError('Failed to reach server: ' + e.message);
@@ -434,10 +654,8 @@
     function renderCategories(videos) {
         loadingVideos.classList.add('hidden');
         videoCategories.classList.remove('hidden');
-
         videoCategories.innerHTML = Object.entries(videos).map(([cat, keys]) => {
-            const cfg = categoryConfig[cat] || categoryConfig.Natural_Content;
-            // Display name: strip the  "<class>/<sub>/"  prefix → just the stem
+            const cfg   = categoryConfig[cat] || categoryConfig.Natural_Content;
             const cards = keys.map(key => {
                 const stem = key.split('/').pop();
                 return `
@@ -446,10 +664,8 @@
                     <div class="flex items-center gap-3">
                         <div class="p-2 bg-gradient-to-br ${cfg.color} rounded-lg flex-shrink-0">
                             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
                         <div class="flex-1 min-w-0">
@@ -462,7 +678,6 @@
                     </div>
                 </div>`;
             }).join('');
-
             return `
             <div>
                 <div class="flex items-center gap-3 mb-4">
@@ -473,7 +688,6 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
             </div>`;
         }).join('');
-
         document.querySelectorAll('.video-card').forEach(c =>
             c.addEventListener('click', () => selectVideo(c)));
     }
@@ -486,7 +700,8 @@
         selectedVideo = card.dataset.video;
         selectedVideoName.textContent = selectedVideo.split('/').pop();
         selectedPreview.classList.remove('hidden');
-        selectedPreview.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        // Scroll to the Analyze button (not all the way down)
+        selectedPreview.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     // ── Upload handlers ────────────────────────────────────────────
@@ -526,130 +741,210 @@
         return (b/1048576).toFixed(1) + ' MB';
     }
 
-    // ── Analyze ────────────────────────────────────────────────────
+    // ── Analyze buttons ────────────────────────────────────────────
     document.getElementById('analyze-selected-btn').addEventListener('click', () => analyzeVideo('dataset'));
     document.getElementById('analyze-upload-btn').addEventListener('click',   () => analyzeVideo('upload'));
+    document.getElementById('analyze-url-btn').addEventListener('click',      () => analyzeVideo('url'));
     document.getElementById('reset-btn').addEventListener('click', resetApp);
+    document.getElementById('reset-btn-insights').addEventListener('click', resetApp);
+    document.getElementById('url-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') analyzeVideo('url');
+    });
 
-    // Holds the active SSE connection so we can close it on reset/error
-    let _activeSSE = null;
-
-    // Maps server step_name strings → pipeline step index (0-based)
-    // so the correct step lights up as each server phase is reached.
-    const stepMap = {
-        'Starting…'               : 0,
-        'Probing video…'          : 0,
-        'Building frame indices…' : 0,
-        'Extracting frames…'      : 1,
-        'Filtering black frames…' : 2,
-        'Preprocessing on GPU…'   : 3,
-        'Building tensor…'        : 4,
-        'Running model inference…': 5,
-        'Done'                    : 7,
-    };
-
+    // ── Main analyze flow ──────────────────────────────────────────
     async function analyzeVideo(mode) {
         if (mode === 'dataset' && !selectedVideo) return;
         if (mode === 'upload'  && !selectedFile)  return;
+        if (mode === 'url') {
+            const url = document.getElementById('url-input').value.trim();
+            if (!url) {
+                document.getElementById('url-error-text').textContent = 'Please enter a URL.';
+                document.getElementById('url-error').classList.remove('hidden');
+                return;
+            }
+        }
 
-        // ── Show processing UI ────────────────────────────────────────
-        selectionSection.classList.add('hidden');
-        uploadMode.classList.add('hidden');
-        datasetMode.classList.add('hidden');
+        if (mode === 'url') {
+            // Keep URL panel visible during download — show progress card & scroll to it
+            const dlProgress = document.getElementById('url-download-progress');
+            const dlBar      = document.getElementById('dl-progress-bar');
+            const dlPct      = document.getElementById('dl-pct-label');
+            const dlStep     = document.getElementById('dl-step-label');
+            const dlEta      = document.getElementById('dl-eta-label');
+            const analyzeBtn = document.getElementById('analyze-url-btn');
+            const urlInput   = document.getElementById('url-input');
+
+            analyzeBtn.disabled = true; urlInput.disabled = true;
+            dlProgress.classList.remove('hidden');
+            dlBar.style.width = '0%'; dlPct.textContent = '0%';
+            dlStep.textContent = 'Connecting to yt-dlp…';
+            dlEta.textContent  = 'Starting download…';
+
+            // Scroll to show download card
+            setTimeout(() => dlProgress.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+
+            const url = document.getElementById('url-input').value.trim();
+            let jobId;
+            try {
+                const resp = await fetch('/api/download_url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                });
+                if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Unknown error');
+                jobId = data.job_id;
+            } catch(e) {
+                dlProgress.classList.add('hidden');
+                analyzeBtn.disabled = false; urlInput.disabled = false;
+                showDlFailModal('Could not start download: ' + e.message);
+                return;
+            }
+
+            // Stream download progress inside the URL panel
+            if (_activeSSE) { _activeSSE.close(); _activeSSE = null; }
+            const es = new EventSource('/api/progress/' + jobId);
+            _activeSSE = es;
+
+            await new Promise((resolve, reject) => {
+                es.onmessage = function(ev) {
+                    let d; try { d = JSON.parse(ev.data); } catch { return; }
+                    const p    = d.progress || 0;
+                    const step = d.step_name || '';
+
+                    // Update inline download progress
+                    const barPct = Math.min(p * 3.45, 100);
+                    dlBar.style.width = barPct + '%';
+                    dlPct.textContent = Math.min(Math.round(barPct), 100) + '%';
+
+                    if (step === 'download_complete') {
+                        dlBar.style.width = '100%'; dlPct.textContent = '100%';
+                        dlStep.textContent = 'Download complete ✓';
+                        dlEta.textContent  = '';
+                    } else if (step.startsWith('Downloading') || step === 'Connecting…') {
+                        dlStep.textContent = step;
+                        if (d.eta_sec != null && d.eta_sec > 0) {
+                            const m = Math.floor(d.eta_sec / 60), s = Math.round(d.eta_sec) % 60;
+                            dlEta.textContent = 'ETA ' + (m > 0 ? m + 'm ' + s + 's' : s + 's');
+                        }
+                    }
+
+                    if (d.status === 'error') { es.close(); _activeSSE = null; reject(new Error(d.error || 'Download failed')); return; }
+
+                    // download_complete → show toast, then hand off to pipeline view
+                    if (step === 'download_complete') {
+                        es.close(); _activeSSE = null;
+                        // Show toast
+                        const toast = document.getElementById('dl-toast');
+                        toast.classList.add('show');
+                        setTimeout(() => toast.classList.remove('show'), 2500);
+                        resolve(jobId);
+                    }
+                };
+                es.onerror = () => { es.close(); _activeSSE = null; reject(new Error('Connection lost during download.')); };
+            }).catch(err => {
+                dlProgress.classList.add('hidden');
+                analyzeBtn.disabled = false; urlInput.disabled = false;
+                showDlFailModal('Download failed: ' + err.message);
+                return Promise.reject(err);
+            });
+
+            // Transition to pipeline processing view
+            document.getElementById('mode-selection').classList.add('hidden');
+            urlMode.classList.add('hidden');
+            processingSection.classList.remove('hidden');
+            initStepsContainer();
+            updateProgress(0, null);
+            scrollToCard('start');
+            listenPipeline(jobId);
+            return;
+        }
+
+        // Dataset / Upload mode: go straight to processing
         document.getElementById('mode-selection').classList.add('hidden');
+        datasetMode.classList.add('hidden');
+        uploadMode.classList.add('hidden');
         processingSection.classList.remove('hidden');
-
-        // Render all steps dimmed
-        const steps = pipelineSteps;
-        const sc    = document.getElementById('steps-container');
-        sc.innerHTML = steps.map((s, i) => `
-            <div id="step-${i}" class="flex items-center gap-3 p-3 rounded-lg transition-all opacity-40">
-                <div class="w-2 h-2 rounded-full bg-slate-300"></div>
-                <span class="text-sm font-medium text-slate-700">${s}</span>
-            </div>`).join('');
+        initStepsContainer();
         updateProgress(0, null);
+        // Scroll to processing section
+        scrollToCard('start');
 
-        // ── POST → get job_id immediately (non-blocking) ──────────────
         let jobId;
         try {
-            const fd  = new FormData();
-            let   url;
-            if (mode === 'dataset') { fd.append('selected_video', selectedVideo); url = '/api/classify'; }
-            else                    { fd.append('video', selectedFile);            url = '/api/classify_external'; }
-
-            const resp = await fetch(url, { method: 'POST', body: fd });
+            let resp;
+            if (mode === 'dataset') {
+                const fd = new FormData(); fd.append('selected_video', selectedVideo);
+                resp = await fetch('/api/classify', { method:'POST', body:fd });
+            } else {
+                const fd = new FormData(); fd.append('video', selectedFile);
+                resp = await fetch('/api/classify_external', { method:'POST', body:fd });
+            }
             if (!resp.ok) throw new Error(`Server error ${resp.status}`);
             const data = await resp.json();
             if (!data.success) throw new Error(data.error || 'Unknown error');
             jobId = data.job_id;
-        } catch (e) {
-            if (mode === 'dataset') showError('Error: ' + e.message);
-            else showUploadError('Error: ' + e.message);
-            resetApp();
-            return;
+        } catch(e) {
+            showError('Error: ' + e.message);
+            resetApp(); return;
         }
 
-        // ── Stream real-time progress via SSE ─────────────────────────
-        // The server sends a JSON event every ~300ms with:
-        //   { progress, step_name, eta_sec, status, result }
+        listenPipeline(jobId);
+    }
+
+    function initStepsContainer() {
+        document.getElementById('steps-container').innerHTML = pipelineSteps.map((s, i) => `
+            <div id="step-${i}" class="flex items-center gap-3 p-3 rounded-lg transition-all opacity-40">
+                <div class="w-2 h-2 rounded-full bg-slate-300"></div>
+                <span class="text-sm font-medium text-slate-700">${s}</span>
+            </div>`).join('');
+    }
+
+    function listenPipeline(jobId) {
         if (_activeSSE) { _activeSSE.close(); _activeSSE = null; }
         const es = new EventSource('/api/progress/' + jobId);
         _activeSSE = es;
-
         let lastStepIdx = -1;
 
-        es.onmessage = function(e) {
-            let d;
-            try { d = JSON.parse(e.data); } catch { return; }
+        es.onmessage = function(ev) {
+            let d; try { d = JSON.parse(ev.data); } catch { return; }
 
-            // ── Progress bar + ETA ────────────────────────────────────
             updateProgress(d.progress || 0, d.eta_sec);
-
-            // ── Current step text ─────────────────────────────────────
             const stepName = d.step_name || '';
             document.getElementById('current-step').textContent = stepName;
 
-            // ── Light up steps as each phase is reached ───────────────
             const targetIdx = (stepName in stepMap) ? stepMap[stepName] : -1;
             if (targetIdx > lastStepIdx) {
-                // Mark the previously active step as complete
                 if (lastStepIdx >= 0) updateStep(lastStepIdx, 'complete');
-                // Mark any in-between steps as complete too
                 for (let i = lastStepIdx + 1; i < targetIdx; i++) updateStep(i, 'complete');
-                // Light up the current step as active
                 updateStep(targetIdx, 'active');
                 lastStepIdx = targetIdx;
             }
 
-            // ── Job finished ──────────────────────────────────────────
             if (d.status === 'done') {
                 es.close(); _activeSSE = null;
                 updateProgress(100, 0);
-                steps.forEach((_, i) => updateStep(i, 'complete'));
+                pipelineSteps.forEach((_, i) => updateStep(i, 'complete'));
                 setTimeout(() => showResults(d.result), 400);
             }
-
-            // ── Job errored ───────────────────────────────────────────
             if (d.status === 'error') {
                 es.close(); _activeSSE = null;
-                if (mode === 'dataset') showError('Error: ' + (d.error || 'Unknown error'));
-                else showUploadError('Error: ' + (d.error || 'Unknown error'));
+                showError('Error: ' + (d.error || 'Unknown error'));
                 resetApp();
             }
         };
 
         es.onerror = function() {
             es.close(); _activeSSE = null;
-            if (mode === 'dataset') showError('Lost connection to server. Please try again.');
-            else showUploadError('Lost connection to server. Please try again.');
+            showError('Lost connection to server. Please try again.');
             resetApp();
         };
     }
 
     function updateStep(i, state) {
         const el = document.getElementById('step-' + i); if (!el) return;
-        const dot = el.querySelector('.w-2');
-        const txt = el.querySelector('span');
+        const dot = el.querySelector('.w-2'), txt = el.querySelector('span');
         if (state === 'active') {
             el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
             dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
@@ -664,64 +959,53 @@
         }
     }
 
-    // p  : 0-100
-    // eta: seconds (number) → show "ETA Xs / Xm Xs", null → hide ETA
     function updateProgress(p, eta) {
         document.getElementById('progress-bar').style.width = p + '%';
         let label = Math.round(p) + '%';
         if (eta != null && eta > 0) {
-            const m = Math.floor(eta / 60);
-            const s = Math.round(eta) % 60;
+            const m = Math.floor(eta / 60), s = Math.round(eta) % 60;
             label += '  ·  ETA ' + (m > 0 ? m + 'm ' + s + 's' : s + 's');
         }
         document.getElementById('progress-text').textContent = label;
     }
 
-    // ── Render results ─────────────────────────────────────────────
+    // ── Show results ───────────────────────────────────────────────
     function showResults(r) {
         processingSection.classList.add('hidden');
         resultsSection.classList.remove('hidden');
+        switchResultTab('result');
+        scrollToCard('start');
 
         const cfg = categoryConfig[r.category] || categoryConfig.Natural_Content;
-
-        // Icon + category
         const icon = document.getElementById('result-icon');
         icon.className = `inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br ${cfg.color} rounded-3xl mb-6 shadow-xl text-5xl`;
         icon.textContent = cfg.emoji;
-        document.getElementById('result-category').textContent  = r.category.replace('_', ' ');
+        document.getElementById('result-category').textContent   = r.category.replace('_', ' ');
         document.getElementById('result-confidence').textContent = r.confidence.toFixed(2) + '%';
 
-        // True-class badge (dataset mode)
-        const badge     = document.getElementById('true-class-badge');
-        const badgeRow  = document.getElementById('true-class-row');
+        const badge = document.getElementById('true-class-badge');
+        const badgeRow = document.getElementById('true-class-row');
         if (r.source === 'dataset' && r.true_class) {
             const correct = r.true_class === r.category;
-            badge.textContent = (correct ? '✓ Correct  · ' : '✗ Wrong  · ') +
-                                'True class: ' + r.true_class.replace('_', ' ');
+            badge.textContent = (correct ? '✓ Correct  · ' : '✗ Wrong  · ') + 'True class: ' + r.true_class.replace('_', ' ');
             badge.className = 'text-xs px-3 py-1 rounded-full font-semibold ' +
                 (correct ? 'bg-green-100 text-green-800 border border-green-300'
                          : 'bg-red-100 text-red-800 border border-red-300');
             badgeRow.classList.remove('hidden');
-        } else {
-            badgeRow.classList.add('hidden');
-        }
+        } else { badgeRow.classList.add('hidden'); }
 
-        // Source
         document.getElementById('result-source').innerHTML =
-            r.source === 'external'
-                ? `📤 <strong>Uploaded:</strong> ${r.video_name}`
-                : `📁 <strong>Test Dataset:</strong> ${r.video_name}`;
+            r.source === 'external' ? `📤 <strong>Uploaded:</strong> ${r.video_name}`  :
+            r.source === 'url'      ? `🔗 <strong>URL:</strong> ${r.video_name}`        :
+            `📁 <strong>Test Dataset:</strong> ${r.video_name}`;
 
-        // Extraction meta
         const statusLabel = { ok:'clean', few_good:'few good frames', all_black:'black-frame fallback' };
         document.getElementById('result-meta').textContent =
             `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}`;
 
-        // Probability bars (sorted descending)
-        const sorted = Object.entries(r.all_scores).sort((a, b) => b[1] - a[1]);
+        const sorted = Object.entries(r.all_scores).sort((a,b) => b[1]-a[1]);
         document.getElementById('prob-bars').innerHTML = sorted.map(([cat, prob]) => {
             const c = categoryConfig[cat] || categoryConfig.Natural_Content;
-            const isTop = cat === r.category;
             return `
             <div class="flex items-center gap-3 mb-4">
                 <div class="flex items-center gap-2 w-36">
@@ -729,35 +1013,297 @@
                     <span class="text-sm font-medium text-slate-700 truncate">${cat.replace('_',' ')}</span>
                 </div>
                 <div class="flex-1 bg-slate-200 rounded-full h-5 overflow-hidden">
-                    <div class="h-full bg-gradient-to-r ${c.color} transition-all flex items-center justify-end pr-2"
-                         style="width:${Math.max(prob, 1)}%">
-                        ${isTop ? '<span class="text-white text-xs font-bold">★</span>' : ''}
+                    <div class="h-full bg-gradient-to-r ${c.color} transition-all flex items-center justify-end pr-2" style="width:${Math.max(prob,1)}%">
+                        ${cat === r.category ? '<span class="text-white text-xs font-bold">★</span>' : ''}
                     </div>
                 </div>
                 <div class="w-14 text-sm font-bold text-slate-700 text-right">${prob.toFixed(1)}%</div>
             </div>`;
         }).join('');
+
+        _lastResult = r;
+        _insightsRendered = false;
+    }
+
+    // ── Model Insights rendering ───────────────────────────────────
+    function renderInsights(r) {
+        const attn   = r.attention_weights || [];
+        const vm     = r.visual_metrics    || {};
+        const pf     = vm.per_frame        || {};
+        const agg    = vm.aggregate        || {};
+        const thumbs = r.frame_thumbnails  || [];
+
+        const maxAttn = Math.max(...attn);
+        const sorted  = attn.map((w,i) => ({w,i})).sort((a,b) => b.w-a.w);
+        const top3    = new Set(sorted.slice(0,3).map(x => x.i));
+
+        document.getElementById('frame-grid').innerHTML = attn.map((w, i) => {
+            const pct     = (w / maxAttn * 100).toFixed(0);
+            const opacity = (0.35 + 0.65 * (w / maxAttn)).toFixed(2);
+            const border  = top3.has(i) ? 'border-emerald-400 ring-2 ring-emerald-300' : 'border-slate-200';
+            const src     = thumbs[i] ? `data:image/jpeg;base64,${thumbs[i]}` : '';
+            return `<div class="frame-thumb rounded-lg overflow-hidden border-2 ${border} relative" style="opacity:${opacity}" title="Frame ${i+1} — click for details" onclick="openFrameModal(${i})">
+                ${src ? `<img src="${src}" class="w-full aspect-square object-cover" alt="Frame ${i+1}">` : `<div class="w-full aspect-square bg-slate-100 flex items-center justify-center text-xs text-slate-400">${i+1}</div>`}
+                <div class="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-200"><div class="h-full bg-emerald-500" style="width:${pct}%"></div></div>
+                ${top3.has(i) ? '<div class="absolute top-1 right-1 text-xs leading-none">⭐</div>' : ''}
+                <div class="absolute top-0 left-0 bg-black/40 text-white text-[10px] px-1 rounded-br">${i+1}</div>
+            </div>`;
+        }).join('');
+
+        // Entropy
+        const entropy    = r.attention_entropy || 0;
+        const maxEntropy = Math.log(attn.length || 16);
+        const eNorm      = entropy / maxEntropy;
+        let   eLabel, eColor;
+        if (eNorm < 0.4)      { eLabel = 'Focused (low)';     eColor = 'text-green-600'; }
+        else if (eNorm < 0.7) { eLabel = 'Moderate';          eColor = 'text-amber-600'; }
+        else                  { eLabel = 'Spread out (high)';  eColor = 'text-red-500';   }
+        document.getElementById('entropy-val').textContent   = entropy.toFixed(3);
+        document.getElementById('entropy-val').className     = 'text-sm font-bold ' + eColor;
+        document.getElementById('entropy-label').textContent = eLabel;
+
+        const labels16   = attn.map((_,i) => 'F'+(i+1));
+        const attnColors = attn.map((_,i) => top3.has(i) ? 'rgba(16,185,129,0.85)' : 'rgba(16,185,129,0.35)');
+        const chartOpts  = { responsive:true, maintainAspectRatio:false,
+                             plugins:{legend:{display:false}},
+                             scales:{x:{grid:{display:false}}, y:{grid:{color:'rgba(0,0,0,0.05)'}}} };
+
+        if (chartAttention) chartAttention.destroy();
+        chartAttention = new Chart(document.getElementById('chart-attention'), {
+            type:'bar', data:{ labels:labels16, datasets:[{ data:attn, backgroundColor:attnColors, borderRadius:3 }] },
+            options:chartOpts,
+        });
+
+        const rs = (pf.rgb_means || []).map(m => m[0]);
+        const gs = (pf.rgb_means || []).map(m => m[1]);
+        const bs = (pf.rgb_means || []).map(m => m[2]);
+        document.getElementById('rgb-r-val').textContent = agg.mean_r?.toFixed(1) ?? '—';
+        document.getElementById('rgb-g-val').textContent = agg.mean_g?.toFixed(1) ?? '—';
+        document.getElementById('rgb-b-val').textContent = agg.mean_b?.toFixed(1) ?? '—';
+        if (chartRgb) chartRgb.destroy();
+        chartRgb = new Chart(document.getElementById('chart-rgb'), {
+            type:'line',
+            data:{ labels:labels16, datasets:[
+                { label:'R', data:rs, borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.1)', borderWidth:2, pointRadius:2, tension:0.3 },
+                { label:'G', data:gs, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,0.1)',  borderWidth:2, pointRadius:2, tension:0.3 },
+                { label:'B', data:bs, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', borderWidth:2, pointRadius:2, tension:0.3 },
+            ]},
+            options:{ ...chartOpts, scales:{ x:{grid:{display:false}}, y:{min:0,max:255,grid:{color:'rgba(0,0,0,0.05)'}} } },
+        });
+
+        const edges = pf.edge_densities || [];
+        const avgEdge = agg.mean_edge_density ?? 0;
+        document.getElementById('edge-avg-val').textContent   = avgEdge.toFixed(1);
+        document.getElementById('edge-quality-label').textContent =
+            avgEdge > 500 ? 'High detail' : avgEdge > 150 ? 'Normal detail' : 'Low detail / blurry';
+        if (chartEdges) chartEdges.destroy();
+        chartEdges = new Chart(document.getElementById('chart-edges'), {
+            type:'bar', data:{ labels:labels16, datasets:[{ data:edges, backgroundColor:'rgba(99,102,241,0.6)', borderRadius:3 }] },
+            options:chartOpts,
+        });
+
+        const sats = pf.saturations || [];
+        document.getElementById('sat-avg-val').textContent = (agg.mean_saturation ?? 0).toFixed(3);
+        if (chartSat) chartSat.destroy();
+        chartSat = new Chart(document.getElementById('chart-sat'), {
+            type:'line', data:{ labels:labels16, datasets:[{
+                label:'Saturation', data:sats, borderColor:'#f59e0b',
+                backgroundColor:'rgba(245,158,11,0.15)', borderWidth:2, pointRadius:2, tension:0.3, fill:true,
+            }]},
+            options:{ ...chartOpts, scales:{ x:{grid:{display:false}}, y:{min:0,max:1,grid:{color:'rgba(0,0,0,0.05)'}} } },
+        });
+    }
+
+    // ── Frame detail modal ─────────────────────────────────────────
+    let _modalFrameIdx = 0;
+
+    function openFrameModal(i) {
+        _modalFrameIdx = i;
+        _renderFrameModal(i);
+        document.getElementById('frame-modal').classList.add('open');
+    }
+
+    function navigateFrame(dir) {
+        if (!_lastResult) return;
+        const total = (_lastResult.attention_weights || []).length;
+        _modalFrameIdx = (_modalFrameIdx + dir + total) % total;
+        _renderFrameModal(_modalFrameIdx);
+    }
+
+    function _renderFrameModal(i) {
+        if (!_lastResult) return;
+        const r      = _lastResult;
+        const attn   = r.attention_weights || [];
+        const vm     = r.visual_metrics    || {};
+        const pf     = vm.per_frame        || {};
+        const thumbs = r.frame_thumbnails  || [];
+        const total  = attn.length;
+
+        const maxAttn = Math.max(...attn);
+        const sorted  = attn.map((w,idx) => ({w,idx})).sort((a,b) => b.w-a.w);
+        const top3    = new Set(sorted.slice(0,3).map(x => x.idx));
+        const rank    = sorted.findIndex(x => x.idx === i) + 1;
+
+        // Header
+        document.getElementById('modal-title').textContent =
+            `Frame ${i+1}${top3.has(i) ? '  ⭐' : ''}`;
+        document.getElementById('modal-subtitle').textContent =
+            `Attention rank #${rank} of ${total}  ·  ${i+1} / ${total}`;
+
+        // Image
+        const imgEl = document.getElementById('modal-img');
+        imgEl.src = thumbs[i] ? `data:image/jpeg;base64,${thumbs[i]}` : '';
+        imgEl.style.display = thumbs[i] ? '' : 'none';
+
+        // Nav arrow state
+        document.getElementById('modal-prev').disabled = false;
+        document.getElementById('modal-next').disabled = false;
+
+        // Dot indicators (max 16, always show current)
+        const dotsEl = document.getElementById('modal-dots');
+        dotsEl.innerHTML = attn.map((_,idx) => {
+            const isActive = idx === i;
+            const isTop    = top3.has(idx);
+            return `<div onclick="event.stopPropagation();navigateFrame(${idx - i})" style="cursor:pointer;transition:all 0.2s;width:${isActive?'20px':'6px'};height:6px;border-radius:3px;background:${isActive?'#10b981':isTop?'#6ee7b7':'#e2e8f0'}"></div>`;
+        }).join('');
+
+        // Metrics
+        const attnVal = attn[i] ?? 0;
+        const attnPct = attnVal / maxAttn * 100;
+        const rgb     = (pf.rgb_means || [])[i] || [0,0,0];
+        const sat     = (pf.saturations || [])[i] ?? 0;
+        const edge    = (pf.edge_densities || [])[i] ?? 0;
+        const [rV,gV,bV] = rgb;
+
+        const [infLabel, infColor, infBg] =
+            attnPct >= 80 ? ['High influence',     'text-emerald-700', 'bg-emerald-50 border-emerald-200']
+          : attnPct >= 40 ? ['Moderate influence', 'text-amber-700',   'bg-amber-50 border-amber-200']
+          :                 ['Low influence',       'text-slate-500',   'bg-slate-100 border-slate-200'];
+
+        document.getElementById('modal-metrics').innerHTML = `
+            <div class="space-y-3">
+
+                <!-- Attention -->
+                <div class="rounded-xl border ${infBg} p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-slate-700">Attention Weight</span>
+                        <span class="text-xs font-medium px-2.5 py-0.5 rounded-full border ${infBg} ${infColor}">${infLabel}</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-3">How much this frame influenced the decision. Higher = model found it more discriminative.</p>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-xl font-bold text-slate-800">${attnVal.toFixed(4)}</span>
+                        <span class="text-xs text-slate-400">${attnPct.toFixed(1)}% of max</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full bg-emerald-500 transition-all" style="width:${Math.min(attnPct,100).toFixed(1)}%"></div>
+                    </div>
+                </div>
+
+                <!-- RGB -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-slate-700">Color Channels (RGB)</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-3">Gaming tends blue/dark, Nature tends green, Animation tends vivid.</p>
+                    <div class="space-y-2">
+                        ${[['R',rV,'#ef4444'],['G',gV,'#22c55e'],['B',bV,'#3b82f6']].map(([ch,val,col])=>`
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs font-bold w-3" style="color:${col}">${ch}</span>
+                            <div class="flex-1 bg-slate-200 rounded-full h-2">
+                                <div class="h-2 rounded-full transition-all" style="width:${(val/255*100).toFixed(1)}%;background:${col}"></div>
+                            </div>
+                            <span class="text-xs font-bold text-slate-700 w-10 text-right">${val}</span>
+                        </div>`).join('')}
+                    </div>
+                </div>
+
+                <!-- Saturation + Edge side by side -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <span class="text-sm font-semibold text-slate-700 block mb-1">Saturation</span>
+                        <p class="text-xs text-slate-500 mb-3">0 = grey · 1 = fully vivid. Animation is high, Flat is low.</p>
+                        <span class="text-xl font-bold text-slate-800 block mb-1.5">${sat.toFixed(3)}</span>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5">
+                            <div class="h-1.5 rounded-full transition-all" style="width:${(sat*100).toFixed(1)}%;background:linear-gradient(90deg,#f59e0b,#f97316)"></div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <span class="text-sm font-semibold text-slate-700 block mb-1">Edge Density</span>
+                        <p class="text-xs text-slate-500 mb-3">High = sharp/detailed (Gaming). Low = simple (Flat).</p>
+                        <span class="text-xl font-bold text-slate-800 block mb-1.5">${edge.toFixed(0)}</span>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5">
+                            <div class="h-1.5 rounded-full transition-all" style="width:${Math.min(edge/800*100,100).toFixed(1)}%;background:linear-gradient(90deg,#6366f1,#8b5cf6)"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>`;
+    }
+
+    function closeFrameModal(e) {
+        if (!e || e.target === document.getElementById('frame-modal'))
+            document.getElementById('frame-modal').classList.remove('open');
+    }
+
+    // keyboard nav
+    document.addEventListener('keydown', e => {
+        if (!document.getElementById('frame-modal').classList.contains('open')) return;
+        if (e.key === 'ArrowLeft')  navigateFrame(-1);
+        if (e.key === 'ArrowRight') navigateFrame(1);
+        if (e.key === 'Escape')     closeFrameModal();
+    });
+
+    // ── Download fail modal ────────────────────────────────────────
+    function showDlFailModal(msg) {
+        document.getElementById('dl-fail-msg').textContent = msg || 'An error occurred while downloading the video.';
+        const icon = document.querySelector('#dl-fail-modal .cross-icon');
+        if (icon) { icon.style.animation='none'; void icon.offsetWidth; icon.style.animation=''; }
+        document.querySelectorAll('.cross-line').forEach(l => { l.style.animation='none'; void l.offsetWidth; l.style.animation=''; });
+        document.getElementById('dl-fail-modal').classList.add('open');
+    }
+    function closeDlFailModal(e) {
+        if (!e || e.target === document.getElementById('dl-fail-modal')) {
+            document.getElementById('dl-fail-modal').classList.remove('open');
+            resetApp();
+        }
     }
 
     // ── Reset ──────────────────────────────────────────────────────
     function resetApp() {
         selectedVideo = null; selectedFile = null;
         document.getElementById('mode-selection').classList.remove('hidden');
-        if (currentMode === 'dataset') {
-            datasetMode.classList.remove('hidden'); selectionSection.classList.remove('hidden');
-            uploadMode.classList.add('hidden');
-        } else {
-            uploadMode.classList.remove('hidden'); datasetMode.classList.add('hidden');
-        }
+        datasetMode.classList.add('hidden');
+        uploadMode.classList.add('hidden');
+        urlMode.classList.add('hidden');
+        if (currentMode === 'dataset')     { datasetMode.classList.remove('hidden'); selectionSection.classList.remove('hidden'); }
+        else if (currentMode === 'upload') { uploadMode.classList.remove('hidden'); }
+        else                               { urlMode.classList.remove('hidden'); }
         processingSection.classList.add('hidden');
         resultsSection.classList.add('hidden');
         selectedPreview.classList.add('hidden');
         fileInfo.classList.add('hidden');
         videoFileInput.value = '';
+        document.getElementById('url-input').value = '';
+        document.getElementById('url-input').disabled = !ytdlpAvailable;
+        document.getElementById('analyze-url-btn').disabled = !ytdlpAvailable;
+        document.getElementById('url-download-progress').classList.add('hidden');
+        document.getElementById('analyze-url-btn').disabled = false;
+        document.getElementById('url-input').disabled = false;
+        if (!ytdlpAvailable) {
+            document.getElementById('url-input').disabled = true;
+            document.getElementById('analyze-url-btn').disabled = true;
+        }
         document.querySelectorAll('.video-card').forEach(c => {
             c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden');
         });
-        hideError(); uploadError.classList.add('hidden');
+        hideError();
+        uploadError.classList.add('hidden');
+        document.getElementById('url-error').classList.add('hidden');
+        [chartAttention, chartRgb, chartEdges, chartSat].forEach(c => { if (c) c.destroy(); });
+        chartAttention = chartRgb = chartEdges = chartSat = null;
+        _lastResult = null;
+        _insightsRendered = false;
+        scrollToCard('start');
     }
 
     function showError(m)       { errorText.textContent = m; errorMessage.classList.remove('hidden'); }
