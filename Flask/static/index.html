@@ -21,18 +21,22 @@
         .upload-area { transition: all 0.3s ease; }
         .upload-area.dragover { border-color:#10b981; background:linear-gradient(135deg,#f0fdf4 0%,#fff 100%); transform:scale(1.02); }
         .tab-button.active { background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; box-shadow:0 4px 12px rgba(16,185,129,0.3); }
-        .result-tab { border-bottom:2px solid transparent; color:#64748b; cursor:pointer; padding:10px 20px; font-size:0.875rem; transition:all 0.2s; white-space:nowrap; }
-        .result-tab.active { border-bottom-color:#10b981; color:#059669; font-weight:600; }
-        .result-tab:hover:not(.active) { color:#334155; border-bottom-color:#cbd5e1; }
         .frame-thumb { transition:all 0.2s; cursor:pointer; border:2px solid transparent; }
         .frame-thumb:hover { transform:scale(1.05); }
         .metric-card { background:white; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+        /* trust bar */
+        .trust-bar-fill { transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+        /* OOD badge pulse */
+        @keyframes ood-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 70%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
+        .ood-badge { animation: ood-pulse 2s ease-in-out infinite; }
+        /* blur badge */
+        @keyframes blur-glow { 0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0.4)} 70%{box-shadow:0 0 0 8px rgba(245,158,11,0)} }
+        .blur-badge { animation: blur-glow 2s ease-in-out infinite; }
         /* Frame modal */
         #frame-modal { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); backdrop-filter:blur(6px); align-items:center; justify-content:center; }
         #frame-modal.open { display:flex; }
         @keyframes modal-in { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
         #frame-modal.open .modal-card { animation: modal-in 0.22s cubic-bezier(0.34,1.2,0.64,1) forwards; }
-        /* Nav arrows */
         .modal-nav { position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; background:white; border-radius:50%; box-shadow:0 2px 12px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.15s; border:1px solid #e2e8f0; z-index:10; }
         .modal-nav:hover { background:#f0fdf4; border-color:#10b981; box-shadow:0 4px 16px rgba(0,0,0,0.22); }
         .modal-nav:disabled { opacity:0.25; cursor:not-allowed; pointer-events:none; }
@@ -45,9 +49,15 @@
         @keyframes cross-draw { 0%{stroke-dashoffset:40} 100%{stroke-dashoffset:0} }
         .cross-icon { animation: cross-pop 0.4s cubic-bezier(.34,1.56,.64,1) forwards; }
         .cross-line { stroke-dasharray:40; stroke-dashoffset:40; animation: cross-draw 0.3s 0.28s ease forwards; }
-        /* Download toast */
         #dl-toast { position:fixed; top:80px; left:50%; transform:translateX(-50%) translateY(-20px); opacity:0; transition:all 0.35s ease; pointer-events:none; z-index:9000; }
         #dl-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+        /* dual inference compare */
+        .compare-card { border-radius:12px; padding:14px; border:2px solid; }
+        .compare-winner { border-color:#10b981; background:#f0fdf4; }
+        .compare-loser  { border-color:#e2e8f0; background:#f8fafc; opacity:0.75; }
+        /* accordion */
+        .cat-chevron-icon, #insights-chevron { transition: transform 0.25s ease; }
+        .accordion-body { transition: all 0.2s ease; }
     </style>
 </head>
 <body class="gradient-bg min-h-screen">
@@ -84,7 +94,6 @@
     <!-- Download failed modal -->
     <div id="dl-fail-modal" onclick="closeDlFailModal(event)">
         <div class="bg-white rounded-2xl shadow-2xl w-full mx-4 overflow-hidden" style="max-width:400px" onclick="event.stopPropagation()">
-            <!-- header with close X -->
             <div class="flex items-center justify-end px-5 pt-4">
                 <button onclick="closeDlFailModal()" class="text-slate-300 hover:text-slate-600 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -108,7 +117,6 @@
 
     <!-- Frame detail modal -->
     <div id="frame-modal" onclick="closeFrameModal(event)">
-        <!-- nav arrows sit outside the card, inside the overlay -->
         <div class="relative w-full flex items-center justify-center" style="max-width:600px;padding:0 28px;margin:0 16px">
             <button id="modal-prev" class="modal-nav modal-nav-prev" onclick="event.stopPropagation();navigateFrame(-1)">
                 <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
@@ -116,9 +124,7 @@
             <button id="modal-next" class="modal-nav modal-nav-next" onclick="event.stopPropagation();navigateFrame(1)">
                 <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
             </button>
-            <!-- Card -->
             <div class="modal-card bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col" style="max-height:88vh" onclick="event.stopPropagation()">
-                <!-- Header -->
                 <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">
                     <div>
                         <h3 class="font-bold text-slate-800 text-lg" id="modal-title">Frame —</h3>
@@ -128,12 +134,10 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <!-- Scrollable body -->
                 <div class="overflow-y-auto flex-1 px-6 pt-5 pb-6 space-y-4">
                     <img id="modal-img" src="" alt="Frame" class="w-full rounded-xl object-cover shadow-sm" style="max-height:240px">
                     <div id="modal-metrics"></div>
                 </div>
-                <!-- Footer nav indicator -->
                 <div class="flex items-center justify-center gap-1.5 py-3 border-t border-slate-100 flex-shrink-0" id="modal-dots"></div>
             </div>
         </div>
@@ -155,7 +159,7 @@
                     <svg class="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     <h3 class="font-semibold text-slate-800">Full Pipeline</h3>
                 </div>
-                <p class="text-sm text-slate-600">Raw video → frame sampling → resize → normalize → classify</p>
+                <p class="text-sm text-slate-600">Raw video → blur check → sharpen → dual inference → OOD trust score</p>
             </div>
             <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
@@ -177,26 +181,14 @@
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     3,531 training videos
                 </span>
-                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
-                    4 classes
-                </span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">4 classes</span>
             </div>
             <div class="w-px h-5 bg-slate-200 hidden sm:block"></div>
             <div class="flex items-center gap-2">
                 <span class="text-xs font-medium text-slate-400">Trained on</span>
-                <span class="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1.5 rounded-full border border-green-200">
-                    <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
-                    NVIDIA Server A100 · 40 GB GPU
-                </span>
-                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/></svg>
-                    CPU: Intel Xeon Gold 5215
-                </span>
-                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h16M4 17h7"/></svg>
-                    RAM: 251 GB
-                </span>
+                <span class="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1.5 rounded-full border border-green-200">NVIDIA Server A100 · 40 GB GPU</span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">CPU: Intel Xeon Gold 5215</span>
+                <span class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">RAM: 251 GB</span>
             </div>
         </div>
 
@@ -240,7 +232,8 @@
                         </div>
                         <p class="text-slate-600">Scanning test dataset…</p>
                     </div>
-                    <div id="video-categories" class="hidden space-y-8"></div>
+                    <!-- Categories rendered as expandable sections by JS -->
+                    <div id="video-categories" class="hidden space-y-3"></div>
                     <div id="error-message" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
                         <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <p class="text-red-800 text-sm" id="error-text"></p>
@@ -267,9 +260,7 @@
             <!-- ── UPLOAD MODE ───────────────────────────────────── -->
             <div id="upload-mode" class="hidden p-12">
                 <div class="max-w-2xl mx-auto">
-                    <div class="text-center mb-8">
-                        <h2 class="text-2xl font-bold text-slate-800 mb-3">Upload Your Video</h2>
-                    </div>
+                    <div class="text-center mb-8"><h2 class="text-2xl font-bold text-slate-800 mb-3">Upload Your Video</h2></div>
                     <div id="upload-area" class="upload-area border-4 border-dashed border-slate-300 rounded-2xl p-12 text-center cursor-pointer mb-6">
                         <input type="file" id="video-file-input" accept="video/*" class="hidden">
                         <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl mb-6 shadow-lg">
@@ -308,13 +299,12 @@
                 <div class="max-w-2xl mx-auto">
                     <div class="text-center mb-8">
                         <h2 class="text-2xl font-bold text-slate-800 mb-3">Classify from URL</h2>
-                        <p class="text-slate-600">Paste a YouTube or direct video URL — yt-dlp downloads it automatically</p>
+                        <p class="text-slate-600">Paste a YouTube or direct video URL</p>
                     </div>
                     <div class="flex gap-3 mb-4">
                         <input id="url-input" type="url" placeholder="https://www.youtube.com/watch?v=…"
                             class="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-green-500 transition-colors">
-                        <button id="analyze-url-btn"
-                            class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg whitespace-nowrap">
+                        <button id="analyze-url-btn" class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg whitespace-nowrap">
                             Analyze
                         </button>
                     </div>
@@ -322,7 +312,6 @@
                         <svg class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <p class="text-red-800 text-sm" id="url-error-text">yt-dlp is not available on this server.</p>
                     </div>
-                    <!-- Download progress card (visible while yt-dlp is downloading) -->
                     <div id="url-download-progress" class="hidden mt-5 bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-5 border border-slate-200">
                         <div class="flex items-center gap-3 mb-3">
                             <div class="p-2 bg-white rounded-lg shadow-sm flex-shrink-0">
@@ -362,19 +351,25 @@
 
             <!-- ── RESULTS SECTION ───────────────────────────────── -->
             <div id="results-section" class="hidden">
-                <div class="border-b border-slate-200 bg-slate-50 px-6">
-                    <div class="flex overflow-x-auto">
-                        <button class="result-tab active" id="rtab-result" onclick="switchResultTab('result')">Classification</button>
-                        <button class="result-tab" id="rtab-insights" onclick="switchResultTab('insights')">Model Insights</button>
-                    </div>
-                </div>
 
-                <!-- Classification panel -->
-                <div id="rpanel-result" class="p-12">
+                <!-- ── Classification panel (single panel, no tabs) ── -->
+                <div id="rpanel-result" class="p-8 md:p-12">
                     <div class="max-w-2xl mx-auto">
                         <div class="text-center mb-8">
                             <div id="result-icon" class="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-6 shadow-xl text-5xl"></div>
                             <h2 class="text-4xl font-bold text-slate-800 mb-3" id="result-category"></h2>
+
+                            <!-- OOD banner (shown only when Unclassified) -->
+                            <div id="ood-banner" class="hidden mb-4 p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-3 text-left">
+                                <span class="inline-flex items-center justify-center w-8 h-8 bg-slate-200 rounded-full flex-shrink-0 mt-0.5">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                </span>
+                                <div>
+                                    <p class="font-semibold text-slate-700 text-sm">Out-of-Distribution Video</p>
+                                    <p class="text-xs text-slate-500 mt-0.5">Trust score below threshold — video may not belong to any of the 4 supported categories. Closest match: <strong id="ood-closest" class="text-slate-700"></strong></p>
+                                </div>
+                            </div>
+
                             <div class="inline-block bg-slate-100 px-6 py-3 rounded-full mb-3">
                                 <p class="text-slate-700 font-semibold">Confidence: <span class="text-green-600 text-xl font-bold" id="result-confidence"></span></p>
                             </div>
@@ -384,6 +379,8 @@
                             <p class="text-slate-500 text-sm mt-2" id="result-source"></p>
                             <p class="text-slate-400 text-xs mt-1" id="result-meta"></p>
                         </div>
+
+                        <!-- Probability bars -->
                         <div class="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200 mb-6">
                             <h3 class="font-semibold text-slate-800 mb-5 flex items-center gap-2">
                                 <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -391,99 +388,157 @@
                             </h3>
                             <div id="prob-bars"></div>
                         </div>
+
+                        <!-- Trust score + quality combined widget -->
+                        <div id="trust-quality-combined" class="mb-6">
+                        <!-- Trust score widget -->
+                        <div id="trust-widget" class="bg-white border border-slate-200 rounded-2xl p-6">
+                            <h3 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                OOD Trust Score
+                                <span class="text-xs font-normal text-slate-400 ml-1">≥ 0.45 = in-distribution</span>
+                            </h3>
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="flex-1">
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs text-slate-500">0</span>
+                                        <span class="text-xs font-bold text-slate-600" id="trust-score-val">—</span>
+                                        <span class="text-xs text-slate-500">1</span>
+                                    </div>
+                                    <div class="relative h-4 bg-slate-100 rounded-full overflow-hidden">
+                                        <!-- threshold line -->
+                                        <div class="absolute top-0 bottom-0 w-px bg-slate-400 opacity-60 z-10" style="left:45%"></div>
+                                        <div id="trust-bar" class="trust-bar-fill h-full rounded-full" style="width:0%"></div>
+                                    </div>
+                                    <div class="flex justify-end mt-0.5"><span class="text-[10px] text-slate-400">threshold: 0.45</span></div>
+                                </div>
+                                <div id="trust-verdict-badge" class="px-3 py-1.5 rounded-full text-xs font-bold flex-shrink-0"></div>
+                            </div>
+                            <!-- Trust breakdown — hidden for OOD/clear videos -->
+                            <div id="trust-breakdown" class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2"></div>
+                        </div>
+
+                        <!-- ── Blur Detection Card (inline, combined below trust) ─────────── -->
+                        <div id="blur-card" class="rounded-b-2xl p-6 border-x-2 border-b-2" style="border-top:none;margin-top:-2px"></div>
+
+                        <!-- ── Dual Inference Card (inline, only if blurry) ── -->
+                        <div id="dual-card" class="hidden rounded-2xl p-6 border border-slate-200 bg-slate-50 mt-3">
+                            <h4 class="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                Dual Inference Comparison
+                            </h4>
+                            <p class="text-xs text-slate-500 mb-4">Model ran on both original and sharpened frames. The result with the higher trust score was used.</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="dual-compare"></div>
+                        </div>
+                        </div><!-- end trust-quality-combined -->
+
+                        <!-- ── Model Insights Accordion ──────────────── -->
+                        <div class="border border-slate-200 rounded-2xl overflow-hidden mb-6">
+                            <button onclick="toggleInsightsAccordion()" class="w-full flex items-center justify-between p-5 bg-white hover:bg-slate-50 transition-all text-left">
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                    <span class="font-bold text-slate-800">Model Insights</span>
+                                    <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium hidden sm:inline">Attention · Visuals · Sharpness</span>
+                                </div>
+                                <svg id="insights-chevron" class="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="insights-accordion-body" class="hidden border-t border-slate-100">
+                                <div class="p-6 space-y-8">
+
+                                    <!-- Frame grid -->
+                                    <div>
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h3 class="font-bold text-slate-800 text-lg">Frames the Model Looked At</h3>
+                                            <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Attention Weights</span>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mb-4">Brighter green border = more influence. ⭐ Top 3 highlighted. <span class="text-emerald-600 font-medium">Click any frame for per-frame insights.</span></p>
+                                        <div id="frame-grid" class="grid grid-cols-4 sm:grid-cols-8 gap-2"></div>
+                                    </div>
+
+                                    <!-- Attention chart -->
+                                    <div class="metric-card">
+                                        <div class="flex items-start justify-between mb-1">
+                                            <div>
+                                                <h4 class="font-semibold text-slate-800">Per-Frame Attention</h4>
+                                                <p class="text-xs text-slate-500 mt-0.5">How much each of the 16 frames contributed to the decision</p>
+                                            </div>
+                                            <div class="text-right ml-4">
+                                                <p class="text-xs text-slate-500">Attention Entropy</p>
+                                                <p class="text-sm font-bold" id="entropy-val">—</p>
+                                                <p class="text-xs text-slate-400" id="entropy-label">—</p>
+                                            </div>
+                                        </div>
+                                        <div class="h-40 mt-4"><canvas id="chart-attention"></canvas></div>
+                                        <div class="mt-3 flex gap-4 text-xs text-slate-500">
+                                            <span>🔍 <strong>Low entropy</strong> → focused on key frames</span>
+                                            <span>🌊 <strong>High entropy</strong> → spread evenly (less certain)</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- RGB channels -->
+                                    <div class="metric-card">
+                                        <h4 class="font-semibold text-slate-800 mb-1">Average Color (R · G · B)</h4>
+                                        <p class="text-xs text-slate-500 mb-4">Mean brightness per channel.</p>
+                                        <div class="grid grid-cols-3 gap-4 mb-4">
+                                            <div class="text-center">
+                                                <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#fca5a5,#ef4444)"></div>
+                                                <p class="text-xs text-slate-500">Red</p><p class="font-bold text-slate-800" id="rgb-r-val">—</p>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#86efac,#22c55e)"></div>
+                                                <p class="text-xs text-slate-500">Green</p><p class="font-bold text-slate-800" id="rgb-g-val">—</p>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#93c5fd,#3b82f6)"></div>
+                                                <p class="text-xs text-slate-500">Blue</p><p class="font-bold text-slate-800" id="rgb-b-val">—</p>
+                                            </div>
+                                        </div>
+                                        <div class="h-44"><canvas id="chart-rgb"></canvas></div>
+                                    </div>
+
+                                    <!-- Edge density -->
+                                    <div class="metric-card">
+                                        <div class="flex items-start justify-between mb-1">
+                                            <div>
+                                                <h4 class="font-semibold text-slate-800">Edge Density per Frame</h4>
+                                                <p class="text-xs text-slate-500 mt-0.5">Laplacian variance — high = detailed/sharp. Low = simple.</p>
+                                            </div>
+                                            <div class="text-right ml-4">
+                                                <p class="text-xs text-slate-500">Avg Edge Score</p>
+                                                <p class="text-sm font-bold" id="edge-avg-val">—</p>
+                                                <p class="text-xs text-slate-400" id="edge-quality-label">—</p>
+                                            </div>
+                                        </div>
+                                        <div class="h-40 mt-4"><canvas id="chart-edges"></canvas></div>
+                                    </div>
+
+                                    <!-- Saturation -->
+                                    <div class="metric-card">
+                                        <div class="flex items-start justify-between mb-1">
+                                            <div>
+                                                <h4 class="font-semibold text-slate-800">Color Saturation per Frame</h4>
+                                                <p class="text-xs text-slate-500 mt-0.5">0 = grey · 1 = fully saturated.</p>
+                                            </div>
+                                            <div class="text-right ml-4">
+                                                <p class="text-xs text-slate-500">Avg Saturation</p>
+                                                <p class="text-sm font-bold" id="sat-avg-val">—</p>
+                                            </div>
+                                        </div>
+                                        <div class="h-40 mt-4"><canvas id="chart-sat"></canvas></div>
+                                    </div>
+
+                                    <!-- Per-Frame Sharpness (moved from quality tab) -->
+                                    <div class="metric-card">
+                                        <h4 class="font-semibold text-slate-800 mb-1">Per-Frame Sharpness (Laplacian Variance)</h4>
+                                        <p class="text-xs text-slate-500 mb-4">Threshold: 100. Below = blurry. Sharp frames: 200–2000. 🟠 = blurry · 🟢 = sharp</p>
+                                        <div class="h-40"><canvas id="chart-blur-scores"></canvas></div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
                         <button id="reset-btn" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
-                            Analyze Another Video
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Model Insights panel -->
-                <div id="rpanel-insights" class="hidden p-8">
-                    <div class="max-w-4xl mx-auto space-y-8">
-
-                        <!-- Frame grid -->
-                        <div>
-                            <div class="flex items-center gap-2 mb-1">
-                                <h3 class="font-bold text-slate-800 text-lg">Frames the Model Looked At</h3>
-                                <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Attention Weights</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mb-4">Brighter green border = more influence. ⭐ Top 3 highlighted. <span class="text-emerald-600 font-medium">Click any frame for per-frame insights.</span></p>
-                            <div id="frame-grid" class="grid grid-cols-4 sm:grid-cols-8 gap-2"></div>
-                        </div>
-
-                        <!-- Attention chart -->
-                        <div class="metric-card">
-                            <div class="flex items-start justify-between mb-1">
-                                <div>
-                                    <h4 class="font-semibold text-slate-800">Per-Frame Attention</h4>
-                                    <p class="text-xs text-slate-500 mt-0.5">How much each of the 16 frames contributed to the decision</p>
-                                </div>
-                                <div class="text-right ml-4">
-                                    <p class="text-xs text-slate-500">Attention Entropy</p>
-                                    <p class="text-sm font-bold" id="entropy-val">—</p>
-                                    <p class="text-xs text-slate-400" id="entropy-label">—</p>
-                                </div>
-                            </div>
-                            <div class="h-40 mt-4"><canvas id="chart-attention"></canvas></div>
-                            <div class="mt-3 flex gap-4 text-xs text-slate-500">
-                                <span>🔍 <strong>Low entropy</strong> → focused on key frames</span>
-                                <span>🌊 <strong>High entropy</strong> → spread evenly (less certain)</span>
-                            </div>
-                        </div>
-
-                        <!-- RGB channels -->
-                        <div class="metric-card">
-                            <h4 class="font-semibold text-slate-800 mb-1">Average Color (R · G · B)</h4>
-                            <p class="text-xs text-slate-500 mb-4">Mean brightness per channel. Gaming tends blue/dark, Nature tends green, Animation tends vivid.</p>
-                            <div class="grid grid-cols-3 gap-4 mb-4">
-                                <div class="text-center">
-                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#fca5a5,#ef4444)"></div>
-                                    <p class="text-xs text-slate-500">Red</p><p class="font-bold text-slate-800" id="rgb-r-val">—</p>
-                                </div>
-                                <div class="text-center">
-                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#86efac,#22c55e)"></div>
-                                    <p class="text-xs text-slate-500">Green</p><p class="font-bold text-slate-800" id="rgb-g-val">—</p>
-                                </div>
-                                <div class="text-center">
-                                    <div class="w-full h-4 rounded-full mb-1" style="background:linear-gradient(90deg,#93c5fd,#3b82f6)"></div>
-                                    <p class="text-xs text-slate-500">Blue</p><p class="font-bold text-slate-800" id="rgb-b-val">—</p>
-                                </div>
-                            </div>
-                            <div class="h-44"><canvas id="chart-rgb"></canvas></div>
-                        </div>
-
-                        <!-- Edge density -->
-                        <div class="metric-card">
-                            <div class="flex items-start justify-between mb-1">
-                                <div>
-                                    <h4 class="font-semibold text-slate-800">Edge Density per Frame</h4>
-                                    <p class="text-xs text-slate-500 mt-0.5">Laplacian variance — high = detailed/sharp (Gaming, Animation). Low = simple (Flat Content).</p>
-                                </div>
-                                <div class="text-right ml-4">
-                                    <p class="text-xs text-slate-500">Avg Edge Score</p>
-                                    <p class="text-sm font-bold" id="edge-avg-val">—</p>
-                                    <p class="text-xs text-slate-400" id="edge-quality-label">—</p>
-                                </div>
-                            </div>
-                            <div class="h-40 mt-4"><canvas id="chart-edges"></canvas></div>
-                        </div>
-
-                        <!-- Saturation -->
-                        <div class="metric-card">
-                            <div class="flex items-start justify-between mb-1">
-                                <div>
-                                    <h4 class="font-semibold text-slate-800">Color Saturation per Frame</h4>
-                                    <p class="text-xs text-slate-500 mt-0.5">0 = grey, 1 = fully saturated. Animation is high, Natural is medium, Flat is low.</p>
-                                </div>
-                                <div class="text-right ml-4">
-                                    <p class="text-xs text-slate-500">Avg Saturation</p>
-                                    <p class="text-sm font-bold" id="sat-avg-val">—</p>
-                                </div>
-                            </div>
-                            <div class="h-40 mt-4"><canvas id="chart-sat"></canvas></div>
-                        </div>
-
-                        <button id="reset-btn-insights" class="w-full bg-gradient-to-r from-slate-700 to-slate-900 text-white px-8 py-4 rounded-xl font-semibold hover:from-slate-800 hover:to-black transition-all shadow-lg mt-2">
                             Analyze Another Video
                         </button>
                     </div>
@@ -537,15 +592,17 @@
     let ytdlpAvailable = false;
     let currentMode = 'dataset';
     let _activeSSE = null;
-    let _lastResult = null, _insightsRendered = false;
+    let _lastResult = null, _insightsRendered = false, _qualityRendered = false;
+    let _insightsAccordionOpen = false;
 
-    let chartAttention = null, chartRgb = null, chartEdges = null, chartSat = null;
+    let chartAttention = null, chartRgb = null, chartEdges = null, chartSat = null, chartBlur = null;
 
     const categoryConfig = {
         Animation      : { color:'from-purple-500 to-pink-500',   emoji:'🎨', border:'border-purple-200' },
         Gaming         : { color:'from-blue-500 to-cyan-500',     emoji:'🎮', border:'border-blue-200'   },
         Natural_Content: { color:'from-green-500 to-emerald-500', emoji:'🌿', border:'border-green-200'  },
         Flat_Content   : { color:'from-orange-500 to-amber-500',  emoji:'📊', border:'border-orange-200' },
+        Unclassified   : { color:'from-slate-400 to-slate-600',   emoji:'❓', border:'border-slate-200'  },
     };
 
     const pipelineSteps = [
@@ -553,77 +610,44 @@
         'Sampling 48 candidate frames',
         'Filtering black / dark frames',
         'Selecting 16 evenly-spaced frames',
-        'Resizing frames to 224 × 224',
-        'Applying ImageNet normalization',
-        'Running ResNet18 inference',
+        'Blur detection',
+        'Sharpening frames (if blurry)',
+        'Preprocessing on GPU',
+        'Running model inference',
+        'Trust score computation',
         'Extracting visual metrics',
         'Finalizing results',
     ];
 
     const stepMap = {
-        'Starting…'                  : 0,
-        'Probing video…'             : 0,
-        'Building frame indices…'    : 0,
-        'Extracting frames…'         : 1,
-        'Filtering black frames…'    : 2,
-        'Preprocessing on GPU…'      : 3,
-        'Building tensor…'           : 4,
-        'Running model inference…'   : 5,
-        'Extracting visual metrics…' : 6,
-        'Encoding frame thumbnails…' : 7,
-        'Done'                       : 8,
+        'Starting…'                          : 0,
+        'Probing video…'                     : 0,
+        'Building frame indices…'            : 0,
+        'Extracting frames…'                 : 1,
+        'Filtering black frames…'            : 2,
+        'Blur detection…'                    : 4,
+        'Preprocessing on GPU…'              : 6,
+        'Running model inference…'           : 7,
+        'Re-classifying sharpened frames…'   : 7,
+        'Extracting visual metrics…'         : 9,
+        'Encoding frame thumbnails…'         : 10,
+        'Done'                               : 10,
     };
 
-    // ── Smooth scroll helper ───────────────────────────────────────
-    function scrollToCard(block = 'center') {
-        mainCard.scrollIntoView({ behavior: 'smooth', block });
-    }
+    function scrollToCard(block = 'center') { mainCard.scrollIntoView({ behavior: 'smooth', block }); }
 
     // ── Input tab switching ────────────────────────────────────────
     tabDataset.addEventListener('click', () => switchMode('dataset'));
-    tabUpload.addEventListener('click',  () => {
-        switchMode('upload');
-        // Scroll to centre of upload area
-        setTimeout(() => uploadArea.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-    });
-    tabUrl.addEventListener('click', () => {
-        switchMode('url');
-        // Scroll to centre of URL input area
-        setTimeout(() => document.getElementById('url-input').scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-    });
+    tabUpload.addEventListener('click',  () => { switchMode('upload'); setTimeout(() => uploadArea.scrollIntoView({ behavior:'smooth', block:'center' }), 100); });
+    tabUrl.addEventListener('click',     () => { switchMode('url');    setTimeout(() => document.getElementById('url-input').scrollIntoView({ behavior:'smooth', block:'center' }), 100); });
 
     function switchMode(mode) {
         currentMode = mode;
         [tabDataset, tabUpload, tabUrl].forEach(t => { t.classList.remove('active'); t.classList.add('bg-white'); });
         [datasetMode, uploadMode, urlMode].forEach(p => p.classList.add('hidden'));
-
-        if (mode === 'dataset') {
-            tabDataset.classList.add('active'); tabDataset.classList.remove('bg-white');
-            datasetMode.classList.remove('hidden');
-        } else if (mode === 'upload') {
-            tabUpload.classList.add('active'); tabUpload.classList.remove('bg-white');
-            uploadMode.classList.remove('hidden');
-            if (!externalProcessingAvailable) {
-                uploadArea.style.opacity = '0.5'; uploadArea.style.cursor = 'not-allowed';
-            }
-        } else {
-            tabUrl.classList.add('active'); tabUrl.classList.remove('bg-white');
-            urlMode.classList.remove('hidden');
-        }
-    }
-
-    // ── Result sub-tab switching ───────────────────────────────────
-    function switchResultTab(tab) {
-        ['result','insights'].forEach(t => {
-            document.getElementById('rtab-'  + t).classList.remove('active');
-            document.getElementById('rpanel-'+ t).classList.add('hidden');
-        });
-        document.getElementById('rtab-'  + tab).classList.add('active');
-        document.getElementById('rpanel-'+ tab).classList.remove('hidden');
-        if (tab === 'insights' && _lastResult && !_insightsRendered) {
-            renderInsights(_lastResult);
-            _insightsRendered = true;
-        }
+        if (mode === 'dataset') { tabDataset.classList.add('active'); tabDataset.classList.remove('bg-white'); datasetMode.classList.remove('hidden'); }
+        else if (mode === 'upload') { tabUpload.classList.add('active'); tabUpload.classList.remove('bg-white'); uploadMode.classList.remove('hidden'); if (!externalProcessingAvailable) { uploadArea.style.opacity='0.5'; uploadArea.style.cursor='not-allowed'; } }
+        else { tabUrl.classList.add('active'); tabUrl.classList.remove('bg-white'); urlMode.classList.remove('hidden'); }
     }
 
     // ── Status check ───────────────────────────────────────────────
@@ -646,82 +670,88 @@
             const d = await (await fetch('/api/videos')).json();
             if (d.success) renderCategories(d.videos);
             else { loadingVideos.classList.add('hidden'); showError(d.error || 'Failed to load videos'); }
-        } catch(e) {
-            loadingVideos.classList.add('hidden'); showError('Failed to reach server: ' + e.message);
-        }
+        } catch(e) { loadingVideos.classList.add('hidden'); showError('Failed to reach server: ' + e.message); }
     }
 
+    // ── Render categories as expandable accordion sections ─────────
     function renderCategories(videos) {
         loadingVideos.classList.add('hidden');
         videoCategories.classList.remove('hidden');
         videoCategories.innerHTML = Object.entries(videos).map(([cat, keys]) => {
-            const cfg   = categoryConfig[cat] || categoryConfig.Natural_Content;
+            const cfg = categoryConfig[cat] || categoryConfig.Natural_Content;
             const cards = keys.map(key => {
                 const stem = key.split('/').pop();
-                return `
-                <div class="video-card bg-white rounded-xl p-4 border-2 ${cfg.border} cursor-pointer"
-                     data-video="${key}" data-category="${cat}">
+                return `<div class="video-card bg-white rounded-xl p-4 border-2 ${cfg.border} cursor-pointer" data-video="${key}" data-category="${cat}">
                     <div class="flex items-center gap-3">
                         <div class="p-2 bg-gradient-to-br ${cfg.color} rounded-lg flex-shrink-0">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="font-medium text-slate-800 truncate text-sm">${stem}</p>
                             <p class="text-xs text-slate-500">${cat.replace('_',' ')}</p>
                         </div>
-                        <svg class="w-5 h-5 text-green-600 hidden check-icon flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                        </svg>
+                        <svg class="w-5 h-5 text-green-600 hidden check-icon flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                     </div>
                 </div>`;
             }).join('');
+
             return `
-            <div>
-                <div class="flex items-center gap-3 mb-4">
-                    <span class="text-3xl">${cfg.emoji}</span>
-                    <h3 class="text-xl font-bold text-slate-800">${cat.replace('_',' ')}</h3>
-                    <span class="text-sm text-slate-500">(${keys.length} videos)</span>
+            <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                <button class="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-slate-50 transition-all text-left" onclick="toggleCategorySection('${cat}')">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${cfg.emoji}</span>
+                        <h3 class="text-lg font-bold text-slate-800">${cat.replace('_',' ')}</h3>
+                        <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">${keys.length} videos</span>
+                    </div>
+                    <svg id="cat-chevron-${cat}" class="cat-chevron-icon w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div id="cat-body-${cat}" class="cat-body-section hidden border-t border-slate-100 px-5 pb-5 pt-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
             </div>`;
         }).join('');
-        document.querySelectorAll('.video-card').forEach(c =>
-            c.addEventListener('click', () => selectVideo(c)));
+        document.querySelectorAll('.video-card').forEach(c => c.addEventListener('click', () => selectVideo(c)));
+    }
+
+    function toggleCategorySection(cat) {
+        // Close all other sections
+        document.querySelectorAll('.cat-body-section').forEach(el => {
+            const elCat = el.id.replace('cat-body-', '');
+            if (elCat !== cat) {
+                el.classList.add('hidden');
+                const ch = document.getElementById('cat-chevron-' + elCat);
+                if (ch) ch.style.transform = '';
+            }
+        });
+        const body    = document.getElementById('cat-body-'    + cat);
+        const chevron = document.getElementById('cat-chevron-' + cat);
+        if (!body) return;
+        const isOpen = !body.classList.contains('hidden');
+        body.classList.toggle('hidden', isOpen);
+        if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
     }
 
     function selectVideo(card) {
-        document.querySelectorAll('.video-card').forEach(c => {
-            c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden');
-        });
+        document.querySelectorAll('.video-card').forEach(c => { c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden'); });
         card.classList.add('selected'); card.querySelector('.check-icon').classList.remove('hidden');
         selectedVideo = card.dataset.video;
         selectedVideoName.textContent = selectedVideo.split('/').pop();
         selectedPreview.classList.remove('hidden');
-        // Scroll to the Analyze button (not all the way down)
-        selectedPreview.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        selectedPreview.scrollIntoView({ behavior:'smooth', block:'center' });
     }
 
     // ── Upload handlers ────────────────────────────────────────────
-    uploadArea.addEventListener('click', () => {
-        if (externalProcessingAvailable) videoFileInput.click();
-        else showUploadError('Video processing not available — model checkpoint missing.');
-    });
+    uploadArea.addEventListener('click', () => { if (externalProcessingAvailable) videoFileInput.click(); else showUploadError('Video processing not available — model checkpoint missing.'); });
     uploadArea.addEventListener('dragover', e => { e.preventDefault(); if (externalProcessingAvailable) uploadArea.classList.add('dragover'); });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-    uploadArea.addEventListener('drop', e => {
-        e.preventDefault(); uploadArea.classList.remove('dragover');
-        if (externalProcessingAvailable && e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
-    });
+    uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('dragover'); if (externalProcessingAvailable && e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]); });
     videoFileInput.addEventListener('change', function() { if (this.files.length > 0) handleFileSelect(this.files[0]); });
 
     function handleFileSelect(file) {
         const ok = ['video/mp4','video/avi','video/x-msvideo','video/quicktime','video/x-matroska','video/webm'];
-        if (!ok.includes(file.type) && !file.name.match(/\.(mp4|avi|mov|mkv|webm)$/i)) {
-            showUploadError('Unsupported file type. Use MP4, AVI, MOV, MKV or WEBM.'); return;
-        }
+        if (!ok.includes(file.type) && !file.name.match(/\.(mp4|avi|mov|mkv|webm)$/i)) { showUploadError('Unsupported file type.'); return; }
         if (file.size > 500 * 1024 * 1024) { showUploadError('File exceeds 500 MB.'); return; }
         selectedFile = file;
         fileName.textContent = file.name;
@@ -730,79 +760,51 @@
         uploadError.classList.add('hidden');
     }
 
-    document.getElementById('clear-file-btn').addEventListener('click', e => {
-        e.stopPropagation(); selectedFile = null;
-        fileInfo.classList.add('hidden'); videoFileInput.value = '';
-    });
-
-    function fmtSize(b) {
-        if (b < 1024) return b + ' B';
-        if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-        return (b/1048576).toFixed(1) + ' MB';
-    }
+    document.getElementById('clear-file-btn').addEventListener('click', e => { e.stopPropagation(); selectedFile = null; fileInfo.classList.add('hidden'); videoFileInput.value = ''; });
+    function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b/1024).toFixed(1) + ' KB'; return (b/1048576).toFixed(1) + ' MB'; }
 
     // ── Analyze buttons ────────────────────────────────────────────
     document.getElementById('analyze-selected-btn').addEventListener('click', () => analyzeVideo('dataset'));
     document.getElementById('analyze-upload-btn').addEventListener('click',   () => analyzeVideo('upload'));
     document.getElementById('analyze-url-btn').addEventListener('click',      () => analyzeVideo('url'));
-    document.getElementById('reset-btn').addEventListener('click', resetApp);
-    document.getElementById('reset-btn-insights').addEventListener('click', resetApp);
-    document.getElementById('url-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') analyzeVideo('url');
-    });
+    document.getElementById('reset-btn').addEventListener('click',            resetApp);
+    document.getElementById('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') analyzeVideo('url'); });
 
     // ── Main analyze flow ──────────────────────────────────────────
     async function analyzeVideo(mode) {
         if (mode === 'dataset' && !selectedVideo) return;
         if (mode === 'upload'  && !selectedFile)  return;
-        if (mode === 'url') {
-            const url = document.getElementById('url-input').value.trim();
-            if (!url) {
-                document.getElementById('url-error-text').textContent = 'Please enter a URL.';
-                document.getElementById('url-error').classList.remove('hidden');
-                return;
-            }
-        }
 
         if (mode === 'url') {
-            // Keep URL panel visible during download — show progress card & scroll to it
             const dlProgress = document.getElementById('url-download-progress');
-            const dlBar      = document.getElementById('dl-progress-bar');
-            const dlPct      = document.getElementById('dl-pct-label');
-            const dlStep     = document.getElementById('dl-step-label');
-            const dlEta      = document.getElementById('dl-eta-label');
+            const dlBar = document.getElementById('dl-progress-bar');
+            const dlPct = document.getElementById('dl-pct-label');
+            const dlStep = document.getElementById('dl-step-label');
+            const dlEta = document.getElementById('dl-eta-label');
             const analyzeBtn = document.getElementById('analyze-url-btn');
             const urlInput   = document.getElementById('url-input');
+
+            const url = urlInput.value.trim();
+            if (!url) { document.getElementById('url-error-text').textContent = 'Please enter a URL.'; document.getElementById('url-error').classList.remove('hidden'); return; }
 
             analyzeBtn.disabled = true; urlInput.disabled = true;
             dlProgress.classList.remove('hidden');
             dlBar.style.width = '0%'; dlPct.textContent = '0%';
-            dlStep.textContent = 'Connecting to yt-dlp…';
-            dlEta.textContent  = 'Starting download…';
+            dlStep.textContent = 'Connecting to yt-dlp…'; dlEta.textContent = 'Starting download…';
+            setTimeout(() => dlProgress.scrollIntoView({ behavior:'smooth', block:'center' }), 80);
 
-            // Scroll to show download card
-            setTimeout(() => dlProgress.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
-
-            const url = document.getElementById('url-input').value.trim();
             let jobId;
             try {
-                const resp = await fetch('/api/download_url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url }),
-                });
+                const resp = await fetch('/api/download_url', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ url }) });
                 if (!resp.ok) throw new Error(`Server error ${resp.status}`);
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.error || 'Unknown error');
                 jobId = data.job_id;
             } catch(e) {
-                dlProgress.classList.add('hidden');
-                analyzeBtn.disabled = false; urlInput.disabled = false;
-                showDlFailModal('Could not start download: ' + e.message);
-                return;
+                dlProgress.classList.add('hidden'); analyzeBtn.disabled = false; urlInput.disabled = false;
+                showDlFailModal('Could not start download: ' + e.message); return;
             }
 
-            // Stream download progress inside the URL panel
             if (_activeSSE) { _activeSSE.close(); _activeSSE = null; }
             const es = new EventSource('/api/progress/' + jobId);
             _activeSSE = es;
@@ -810,85 +812,46 @@
             await new Promise((resolve, reject) => {
                 es.onmessage = function(ev) {
                     let d; try { d = JSON.parse(ev.data); } catch { return; }
-                    const p    = d.progress || 0;
-                    const step = d.step_name || '';
-
-                    // Update inline download progress
+                    const p = d.progress || 0; const step = d.step_name || '';
                     const barPct = Math.min(p * 3.45, 100);
-                    dlBar.style.width = barPct + '%';
-                    dlPct.textContent = Math.min(Math.round(barPct), 100) + '%';
-
-                    if (step === 'download_complete') {
-                        dlBar.style.width = '100%'; dlPct.textContent = '100%';
-                        dlStep.textContent = 'Download complete ✓';
-                        dlEta.textContent  = '';
-                    } else if (step.startsWith('Downloading') || step === 'Connecting…') {
+                    dlBar.style.width = barPct + '%'; dlPct.textContent = Math.min(Math.round(barPct), 100) + '%';
+                    if (step === 'download_complete') { dlBar.style.width = '100%'; dlPct.textContent = '100%'; dlStep.textContent = 'Download complete ✓'; dlEta.textContent = ''; }
+                    else if (step.startsWith('Downloading') || step === 'Connecting…') {
                         dlStep.textContent = step;
-                        if (d.eta_sec != null && d.eta_sec > 0) {
-                            const m = Math.floor(d.eta_sec / 60), s = Math.round(d.eta_sec) % 60;
-                            dlEta.textContent = 'ETA ' + (m > 0 ? m + 'm ' + s + 's' : s + 's');
-                        }
+                        if (d.eta_sec != null && d.eta_sec > 0) { const m = Math.floor(d.eta_sec/60), s = Math.round(d.eta_sec)%60; dlEta.textContent = 'ETA ' + (m > 0 ? m+'m '+s+'s' : s+'s'); }
                     }
-
                     if (d.status === 'error') { es.close(); _activeSSE = null; reject(new Error(d.error || 'Download failed')); return; }
-
-                    // download_complete → show toast, then hand off to pipeline view
                     if (step === 'download_complete') {
                         es.close(); _activeSSE = null;
-                        // Show toast
-                        const toast = document.getElementById('dl-toast');
-                        toast.classList.add('show');
-                        setTimeout(() => toast.classList.remove('show'), 2500);
+                        const toast = document.getElementById('dl-toast'); toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500);
                         resolve(jobId);
                     }
                 };
                 es.onerror = () => { es.close(); _activeSSE = null; reject(new Error('Connection lost during download.')); };
-            }).catch(err => {
-                dlProgress.classList.add('hidden');
-                analyzeBtn.disabled = false; urlInput.disabled = false;
-                showDlFailModal('Download failed: ' + err.message);
-                return Promise.reject(err);
-            });
+            }).catch(err => { dlProgress.classList.add('hidden'); analyzeBtn.disabled = false; urlInput.disabled = false; showDlFailModal('Download failed: ' + err.message); return Promise.reject(err); });
 
-            // Transition to pipeline processing view
             document.getElementById('mode-selection').classList.add('hidden');
             urlMode.classList.add('hidden');
             processingSection.classList.remove('hidden');
-            initStepsContainer();
-            updateProgress(0, null);
-            scrollToCard('start');
-            listenPipeline(jobId);
-            return;
+            initStepsContainer(); updateProgress(0, null); scrollToCard('start');
+            listenPipeline(jobId); return;
         }
 
-        // Dataset / Upload mode: go straight to processing
         document.getElementById('mode-selection').classList.add('hidden');
-        datasetMode.classList.add('hidden');
-        uploadMode.classList.add('hidden');
+        datasetMode.classList.add('hidden'); uploadMode.classList.add('hidden');
         processingSection.classList.remove('hidden');
-        initStepsContainer();
-        updateProgress(0, null);
-        // Scroll to processing section
-        scrollToCard('start');
+        initStepsContainer(); updateProgress(0, null); scrollToCard('start');
 
         let jobId;
         try {
             let resp;
-            if (mode === 'dataset') {
-                const fd = new FormData(); fd.append('selected_video', selectedVideo);
-                resp = await fetch('/api/classify', { method:'POST', body:fd });
-            } else {
-                const fd = new FormData(); fd.append('video', selectedFile);
-                resp = await fetch('/api/classify_external', { method:'POST', body:fd });
-            }
+            if (mode === 'dataset') { const fd = new FormData(); fd.append('selected_video', selectedVideo); resp = await fetch('/api/classify', { method:'POST', body:fd }); }
+            else { const fd = new FormData(); fd.append('video', selectedFile); resp = await fetch('/api/classify_external', { method:'POST', body:fd }); }
             if (!resp.ok) throw new Error(`Server error ${resp.status}`);
             const data = await resp.json();
             if (!data.success) throw new Error(data.error || 'Unknown error');
             jobId = data.job_id;
-        } catch(e) {
-            showError('Error: ' + e.message);
-            resetApp(); return;
-        }
+        } catch(e) { showError('Error: ' + e.message); resetApp(); return; }
 
         listenPipeline(jobId);
     }
@@ -909,11 +872,9 @@
 
         es.onmessage = function(ev) {
             let d; try { d = JSON.parse(ev.data); } catch { return; }
-
             updateProgress(d.progress || 0, d.eta_sec);
             const stepName = d.step_name || '';
             document.getElementById('current-step').textContent = stepName;
-
             const targetIdx = (stepName in stepMap) ? stepMap[stepName] : -1;
             if (targetIdx > lastStepIdx) {
                 if (lastStepIdx >= 0) updateStep(lastStepIdx, 'complete');
@@ -921,51 +882,28 @@
                 updateStep(targetIdx, 'active');
                 lastStepIdx = targetIdx;
             }
-
-            if (d.status === 'done') {
-                es.close(); _activeSSE = null;
-                updateProgress(100, 0);
-                pipelineSteps.forEach((_, i) => updateStep(i, 'complete'));
-                setTimeout(() => showResults(d.result), 400);
-            }
-            if (d.status === 'error') {
-                es.close(); _activeSSE = null;
-                showError('Error: ' + (d.error || 'Unknown error'));
-                resetApp();
-            }
+            if (d.status === 'done') { es.close(); _activeSSE = null; updateProgress(100, 0); pipelineSteps.forEach((_, i) => updateStep(i, 'complete')); setTimeout(() => showResults(d.result), 400); }
+            if (d.status === 'error') { es.close(); _activeSSE = null; showError('Error: ' + (d.error || 'Unknown error')); resetApp(); }
         };
-
-        es.onerror = function() {
-            es.close(); _activeSSE = null;
-            showError('Lost connection to server. Please try again.');
-            resetApp();
-        };
+        es.onerror = function() { es.close(); _activeSSE = null; showError('Lost connection to server. Please try again.'); resetApp(); };
     }
 
     function updateStep(i, state) {
         const el = document.getElementById('step-' + i); if (!el) return;
         const dot = el.querySelector('.w-2'), txt = el.querySelector('span');
-        if (state === 'active') {
-            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500';
-            dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
-            if (txt) { txt.className = 'text-sm font-medium text-slate-800'; txt.textContent = txt.textContent.replace(/^✓ /, ''); }
-        } else if (state === 'complete') {
-            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-400';
-            dot.className = 'w-2 h-2 rounded-full bg-green-400';
-            if (txt && !txt.textContent.startsWith('✓')) { txt.className = 'text-sm font-medium text-green-700'; txt.textContent = '✓ ' + txt.textContent; }
-        } else {
-            el.className  = 'flex items-center gap-3 p-3 rounded-lg transition-all opacity-40';
-            dot.className = 'w-2 h-2 rounded-full bg-slate-300';
+        if (state === 'active') { el.className = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-500'; dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse'; if (txt) { txt.className = 'text-sm font-medium text-slate-800'; txt.textContent = txt.textContent.replace(/^✓ /, ''); } }
+        else if (state === 'complete') { el.className = 'flex items-center gap-3 p-3 rounded-lg transition-all bg-green-50 border-l-4 border-green-400'; dot.className = 'w-2 h-2 rounded-full bg-green-400'; if (txt && !txt.textContent.startsWith('✓')) { txt.className = 'text-sm font-medium text-green-700'; txt.textContent = '✓ ' + txt.textContent; } }
+        else { el.className = 'flex items-center gap-3 p-3 rounded-lg transition-all opacity-40'; dot.className = 'w-2 h-2 rounded-full bg-slate-300'; }
+        // Smoothly scroll the active/completed step into view
+        if (state === 'active' || state === 'complete') {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }
 
     function updateProgress(p, eta) {
         document.getElementById('progress-bar').style.width = p + '%';
         let label = Math.round(p) + '%';
-        if (eta != null && eta > 0) {
-            const m = Math.floor(eta / 60), s = Math.round(eta) % 60;
-            label += '  ·  ETA ' + (m > 0 ? m + 'm ' + s + 's' : s + 's');
-        }
+        if (eta != null && eta > 0) { const m = Math.floor(eta/60), s = Math.round(eta)%60; label += '  ·  ETA ' + (m > 0 ? m+'m '+s+'s' : s+'s'); }
         document.getElementById('progress-text').textContent = label;
     }
 
@@ -973,45 +911,48 @@
     function showResults(r) {
         processingSection.classList.add('hidden');
         resultsSection.classList.remove('hidden');
-        switchResultTab('result');
-        scrollToCard('start');
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
 
-        const cfg = categoryConfig[r.category] || categoryConfig.Natural_Content;
+        const cfg = categoryConfig[r.category] || categoryConfig.Unclassified;
         const icon = document.getElementById('result-icon');
         icon.className = `inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br ${cfg.color} rounded-3xl mb-6 shadow-xl text-5xl`;
         icon.textContent = cfg.emoji;
         document.getElementById('result-category').textContent   = r.category.replace('_', ' ');
         document.getElementById('result-confidence').textContent = r.confidence.toFixed(2) + '%';
 
+        // OOD banner
+        const oodBanner = document.getElementById('ood-banner');
+        if (r.ood_flag) {
+            document.getElementById('ood-closest').textContent = (r.closest_match || '').replace('_',' ') + ' (' + (r.closest_score || 0).toFixed(1) + '%)';
+            oodBanner.classList.remove('hidden');
+        } else {
+            oodBanner.classList.add('hidden');
+        }
+
+        // True class badge
         const badge = document.getElementById('true-class-badge');
         const badgeRow = document.getElementById('true-class-row');
         if (r.source === 'dataset' && r.true_class) {
             const correct = r.true_class === r.category;
             badge.textContent = (correct ? '✓ Correct  · ' : '✗ Wrong  · ') + 'True class: ' + r.true_class.replace('_', ' ');
-            badge.className = 'text-xs px-3 py-1 rounded-full font-semibold ' +
-                (correct ? 'bg-green-100 text-green-800 border border-green-300'
-                         : 'bg-red-100 text-red-800 border border-red-300');
+            badge.className = 'text-xs px-3 py-1 rounded-full font-semibold ' + (correct ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300');
             badgeRow.classList.remove('hidden');
         } else { badgeRow.classList.add('hidden'); }
 
         document.getElementById('result-source').innerHTML =
-            r.source === 'external' ? `📤 <strong>Uploaded:</strong> ${r.video_name}`  :
-            r.source === 'url'      ? `🔗 <strong>URL:</strong> ${r.video_name}`        :
+            r.source === 'external' ? `📤 <strong>Uploaded:</strong> ${r.video_name}` :
+            r.source === 'url'      ? `🔗 <strong>URL:</strong> ${r.video_name}` :
             `📁 <strong>Test Dataset:</strong> ${r.video_name}`;
 
         const statusLabel = { ok:'clean', few_good:'few good frames', all_black:'black-frame fallback' };
-        document.getElementById('result-meta').textContent =
-            `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}`;
+        document.getElementById('result-meta').textContent = `${r.frames_extracted} frames extracted · ${statusLabel[r.extraction_status] || r.extraction_status}`;
 
+        // Probability bars
         const sorted = Object.entries(r.all_scores).sort((a,b) => b[1]-a[1]);
         document.getElementById('prob-bars').innerHTML = sorted.map(([cat, prob]) => {
             const c = categoryConfig[cat] || categoryConfig.Natural_Content;
-            return `
-            <div class="flex items-center gap-3 mb-4">
-                <div class="flex items-center gap-2 w-36">
-                    <span class="text-lg">${c.emoji}</span>
-                    <span class="text-sm font-medium text-slate-700 truncate">${cat.replace('_',' ')}</span>
-                </div>
+            return `<div class="flex items-center gap-3 mb-4">
+                <div class="flex items-center gap-2 w-36"><span class="text-lg">${c.emoji}</span><span class="text-sm font-medium text-slate-700 truncate">${cat.replace('_',' ')}</span></div>
                 <div class="flex-1 bg-slate-200 rounded-full h-5 overflow-hidden">
                     <div class="h-full bg-gradient-to-r ${c.color} transition-all flex items-center justify-end pr-2" style="width:${Math.max(prob,1)}%">
                         ${cat === r.category ? '<span class="text-white text-xs font-bold">★</span>' : ''}
@@ -1021,8 +962,211 @@
             </div>`;
         }).join('');
 
+        // Trust score widget
+        renderTrustWidget(r);
+
+        // Quality cards inline
+        renderQuality(r);
+        _qualityRendered = true;
+
         _lastResult = r;
         _insightsRendered = false;
+
+        // Reset insights accordion state
+        _insightsAccordionOpen = false;
+        const insBody    = document.getElementById('insights-accordion-body');
+        const insChevron = document.getElementById('insights-chevron');
+        if (insBody)    insBody.classList.add('hidden');
+        if (insChevron) insChevron.style.transform = '';
+    }
+
+    // ── Trust Score Widget ─────────────────────────────────────────
+    function renderTrustWidget(r) {
+        const score = r.trust_score || 0;
+        const bar   = document.getElementById('trust-bar');
+        const val   = document.getElementById('trust-score-val');
+        const vbadge= document.getElementById('trust-verdict-badge');
+        const bdown = document.getElementById('trust-breakdown');
+
+        val.textContent = score.toFixed(3);
+        bar.style.width = (score * 100) + '%';
+
+        if (score >= 0.45) {
+            bar.className = 'trust-bar-fill h-full rounded-full bg-gradient-to-r from-green-400 to-emerald-500';
+            vbadge.textContent = 'In-Distribution';
+            vbadge.className = 'px-3 py-1.5 rounded-full text-xs font-bold flex-shrink-0 bg-green-100 text-green-800 border border-green-300';
+        } else {
+            bar.className = 'trust-bar-fill h-full rounded-full bg-gradient-to-r from-red-400 to-red-500';
+            vbadge.textContent = 'Out-of-Distribution';
+            vbadge.className = 'px-3 py-1.5 rounded-full text-xs font-bold flex-shrink-0 bg-red-100 text-red-800 border border-red-300';
+        }
+
+        // Hide breakdown metrics for OOD videos — show only the trust bar
+        // Also hide for clear (non-blurry) videos — combined card handles it
+        if (r.ood_flag || !r.blur_meta?.is_blurry) {
+            bdown.innerHTML = '';
+            return;
+        }
+
+        const bd = r.trust_breakdown || {};
+        const signals = [
+            { key:'confidence',    label:'Confidence',     icon:'🎯' },
+            { key:'gap',           label:'Score Gap',      icon:'↔' },
+            { key:'entropy',       label:'Entropy',        icon:'📊' },
+            { key:'attention',     label:'Attention',      icon:'👁' },
+            { key:'frame_agree',   label:'Frame Agree',    icon:'🎞' },
+            { key:'centroid_dist', label:'Centroid Dist',  icon:'📍' },
+        ];
+        bdown.innerHTML = signals.filter(s => bd[s.key] !== undefined).map(s => {
+            const v    = bd[s.key];
+            const pct  = Math.round(v * 100);
+            const clr  = v >= 0.6 ? 'bg-green-100 text-green-800' : v >= 0.4 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
+            return `<div class="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+                <span class="text-xs text-slate-600">${s.icon} ${s.label}</span>
+                <span class="text-xs font-bold px-2 py-0.5 rounded-full ${clr}">${pct}%</span>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Quality rendering (inline on classification page) ──────────
+    function renderQuality(r) {
+        const bm    = r.blur_meta    || {};
+        const di    = r.dual_inference;
+        const card  = document.getElementById('blur-card');
+        const dcard = document.getElementById('dual-card');
+        const dcmp  = document.getElementById('dual-compare');
+        const tw    = document.getElementById('trust-widget');
+
+        const blurScore = bm.blur_score ?? 0;
+        const maxBlur   = 500;
+        const barPct    = Math.min(blurScore / maxBlur * 100, 100).toFixed(1);
+        const threshPct = (100 / maxBlur * 100).toFixed(1); // 20%
+        const isBlurry  = bm.is_blurry;
+
+        if (isBlurry) {
+            // Blurry: trust widget has amber top border, blur card attaches below
+            tw.className = 'bg-white border-2 border-amber-300 rounded-t-2xl p-6';
+            card.className = 'p-6 border-x-2 border-b-2 border-amber-300 bg-amber-50 rounded-b-2xl';
+            card.style.marginTop = '0';
+            card.innerHTML = `
+                <div class="border-t border-amber-200 pt-5 flex items-start gap-4">
+                    <span class="blur-badge inline-flex items-center justify-center w-10 h-10 bg-amber-200 rounded-full flex-shrink-0 mt-0.5">
+                        <svg class="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </span>
+                    <div class="flex-1">
+                        <h4 class="font-bold text-amber-800 text-base mb-1">Blurry Video Detected</h4>
+                        <p class="text-sm text-amber-700 mb-4">Mean Laplacian variance is below the threshold of 100. Unsharp masking was applied to all ${r.frames_extracted} frames.</p>
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <div class="bg-white rounded-xl px-4 py-2 border border-amber-200 text-center">
+                                <p class="text-xs text-amber-600">Blur Score</p>
+                                <p class="text-lg font-bold text-amber-800">${blurScore}</p>
+                            </div>
+                            <div class="bg-white rounded-xl px-4 py-2 border border-amber-200 text-center">
+                                <p class="text-xs text-amber-600">Threshold</p>
+                                <p class="text-lg font-bold text-amber-800">100.0</p>
+                            </div>
+                            <div class="bg-white rounded-xl px-4 py-2 border border-amber-200 text-center">
+                                <p class="text-xs text-amber-600">Sharpened</p>
+                                <p class="text-lg font-bold text-amber-800">${bm.enhanced ? 'Yes' : 'No'}</p>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs text-amber-700 font-medium">Sharpness Score</span>
+                                <span class="text-xs font-bold text-amber-800">${blurScore} / ${maxBlur}+</span>
+                            </div>
+                            <div class="relative h-4 bg-white/70 rounded-full overflow-hidden border border-amber-200">
+                                <div class="absolute top-0 bottom-0 w-0.5 bg-red-500 opacity-80 z-10" style="left:${threshPct}%"></div>
+                                <div class="trust-bar-fill h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500" style="width:${barPct}%"></div>
+                            </div>
+                            <div class="flex mt-0.5" style="padding-left:${threshPct}%">
+                                <span class="text-[10px] text-red-500 font-medium">threshold: 100</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        } else {
+            // Clear: trust widget + clear video status combined seamlessly
+            tw.className = 'bg-white border-2 border-green-200 rounded-t-2xl p-6';
+            card.className = 'p-6 border-x-2 border-b-2 border-green-200 bg-green-50 rounded-b-2xl';
+            card.style.marginTop = '0';
+            card.innerHTML = `
+                <div class="border-t border-green-200 pt-5 flex items-start gap-4">
+                    <div class="inline-flex items-center justify-center w-10 h-10 bg-green-200 rounded-full flex-shrink-0 mt-0.5">
+                        <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="font-bold text-green-800 text-base mb-1">Clear Video</h4>
+                        <p class="text-sm text-green-700 mb-4">Mean Laplacian variance is above the threshold. No sharpening was needed. Single inference pass used.</p>
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs text-green-700 font-medium">Sharpness Score</span>
+                                <span class="text-xs font-bold text-green-800">${blurScore.toFixed(2)} / ${maxBlur}+</span>
+                            </div>
+                            <div class="relative h-4 bg-white/70 rounded-full overflow-hidden border border-green-200">
+                                <div class="absolute top-0 bottom-0 w-0.5 bg-red-400 opacity-70 z-10" style="left:${threshPct}%"></div>
+                                <div class="trust-bar-fill h-full rounded-full bg-gradient-to-r from-green-400 to-emerald-500" style="width:${barPct}%"></div>
+                            </div>
+                            <div class="flex mt-0.5" style="padding-left:${threshPct}%">
+                                <span class="text-[10px] text-red-400 font-medium">threshold: 100</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        // ── Dual inference comparison (blurry only) ───────────────
+        if (di && isBlurry) {
+            dcard.classList.remove('hidden');
+            const orig  = di.original;
+            const sharp = di.sharpened;
+            const chosen= di.chosen;
+
+            const renderDiCard = (data, label, isWinner) => {
+                const cls = isWinner ? 'compare-card compare-winner' : 'compare-card compare-loser';
+                const cfg = categoryConfig[data.category] || categoryConfig.Unclassified;
+                const oodBadge = data.ood_flag ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2">OOD</span>' : '';
+                return `<div class="${cls}">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wide">${label}</span>
+                        ${isWinner ? '<span class="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full font-bold">✓ Used</span>' : '<span class="text-xs bg-slate-300 text-slate-600 px-2 py-0.5 rounded-full">Discarded</span>'}
+                    </div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-2xl">${cfg.emoji}</span>
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">${data.category.replace('_',' ')}${oodBadge}</p>
+                            <p class="text-xs text-slate-500">Conf: ${data.confidence.toFixed(1)}%</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                        <span>Trust</span>
+                        <span class="font-bold ${data.trust_score >= 0.45 ? 'text-green-700' : 'text-red-600'}">${data.trust_score.toFixed(3)}</span>
+                    </div>
+                    <div class="mt-1.5 h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full ${isWinner ? 'bg-green-500' : 'bg-slate-400'}" style="width:${(data.trust_score*100).toFixed(1)}%"></div>
+                    </div>
+                </div>`;
+            };
+
+            const origWins  = chosen === 'original_higher_trust';
+            const sharpWins = chosen === 'sharpened';
+            dcmp.innerHTML  = renderDiCard(orig, 'Original Frames', origWins) + renderDiCard(sharp, 'Sharpened Frames', sharpWins);
+        } else {
+            dcard.classList.add('hidden');
+        }
+    }
+
+    // ── Model Insights Accordion toggle ───────────────────────────
+    function toggleInsightsAccordion() {
+        _insightsAccordionOpen = !_insightsAccordionOpen;
+        const body    = document.getElementById('insights-accordion-body');
+        const chevron = document.getElementById('insights-chevron');
+        body.classList.toggle('hidden', !_insightsAccordionOpen);
+        if (chevron) chevron.style.transform = _insightsAccordionOpen ? 'rotate(180deg)' : '';
+        if (_insightsAccordionOpen && _lastResult && !_insightsRendered) {
+            renderInsights(_lastResult);
+            _insightsRendered = true;
+        }
     }
 
     // ── Model Insights rendering ───────────────────────────────────
@@ -1050,28 +1194,24 @@
             </div>`;
         }).join('');
 
-        // Entropy
         const entropy    = r.attention_entropy || 0;
         const maxEntropy = Math.log(attn.length || 16);
         const eNorm      = entropy / maxEntropy;
-        let   eLabel, eColor;
-        if (eNorm < 0.4)      { eLabel = 'Focused (low)';     eColor = 'text-green-600'; }
-        else if (eNorm < 0.7) { eLabel = 'Moderate';          eColor = 'text-amber-600'; }
-        else                  { eLabel = 'Spread out (high)';  eColor = 'text-red-500';   }
+        let eLabel, eColor;
+        if (eNorm < 0.4)      { eLabel = 'Focused (low)';    eColor = 'text-green-600'; }
+        else if (eNorm < 0.7) { eLabel = 'Moderate';         eColor = 'text-amber-600'; }
+        else                  { eLabel = 'Spread out (high)'; eColor = 'text-red-500';   }
         document.getElementById('entropy-val').textContent   = entropy.toFixed(3);
         document.getElementById('entropy-val').className     = 'text-sm font-bold ' + eColor;
         document.getElementById('entropy-label').textContent = eLabel;
 
         const labels16   = attn.map((_,i) => 'F'+(i+1));
         const attnColors = attn.map((_,i) => top3.has(i) ? 'rgba(16,185,129,0.85)' : 'rgba(16,185,129,0.35)');
-        const chartOpts  = { responsive:true, maintainAspectRatio:false,
-                             plugins:{legend:{display:false}},
-                             scales:{x:{grid:{display:false}}, y:{grid:{color:'rgba(0,0,0,0.05)'}}} };
+        const chartOpts  = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(0,0,0,0.05)'}}} };
 
         if (chartAttention) chartAttention.destroy();
         chartAttention = new Chart(document.getElementById('chart-attention'), {
-            type:'bar', data:{ labels:labels16, datasets:[{ data:attn, backgroundColor:attnColors, borderRadius:3 }] },
-            options:chartOpts,
+            type:'bar', data:{ labels:labels16, datasets:[{ data:attn, backgroundColor:attnColors, borderRadius:3 }] }, options:chartOpts,
         });
 
         const rs = (pf.rgb_means || []).map(m => m[0]);
@@ -1094,35 +1234,48 @@
         const edges = pf.edge_densities || [];
         const avgEdge = agg.mean_edge_density ?? 0;
         document.getElementById('edge-avg-val').textContent   = avgEdge.toFixed(1);
-        document.getElementById('edge-quality-label').textContent =
-            avgEdge > 500 ? 'High detail' : avgEdge > 150 ? 'Normal detail' : 'Low detail / blurry';
+        document.getElementById('edge-quality-label').textContent = avgEdge > 500 ? 'High detail' : avgEdge > 150 ? 'Normal detail' : 'Low detail / blurry';
         if (chartEdges) chartEdges.destroy();
         chartEdges = new Chart(document.getElementById('chart-edges'), {
-            type:'bar', data:{ labels:labels16, datasets:[{ data:edges, backgroundColor:'rgba(99,102,241,0.6)', borderRadius:3 }] },
-            options:chartOpts,
+            type:'bar', data:{ labels:labels16, datasets:[{ data:edges, backgroundColor:'rgba(99,102,241,0.6)', borderRadius:3 }] }, options:chartOpts,
         });
 
         const sats = pf.saturations || [];
         document.getElementById('sat-avg-val').textContent = (agg.mean_saturation ?? 0).toFixed(3);
         if (chartSat) chartSat.destroy();
         chartSat = new Chart(document.getElementById('chart-sat'), {
-            type:'line', data:{ labels:labels16, datasets:[{
-                label:'Saturation', data:sats, borderColor:'#f59e0b',
-                backgroundColor:'rgba(245,158,11,0.15)', borderWidth:2, pointRadius:2, tension:0.3, fill:true,
-            }]},
+            type:'line', data:{ labels:labels16, datasets:[{ label:'Saturation', data:sats, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.15)', borderWidth:2, pointRadius:2, tension:0.3, fill:true }]},
             options:{ ...chartOpts, scales:{ x:{grid:{display:false}}, y:{min:0,max:1,grid:{color:'rgba(0,0,0,0.05)'}} } },
+        });
+
+        // Per-frame blur / sharpness chart (moved here from quality tab)
+        const bm = r.blur_meta || {};
+        const frameScores = bm.frame_scores || [];
+        const blurLabels  = frameScores.map((_, i) => 'F' + (i+1));
+        const barColors   = frameScores.map(s => s < 100 ? 'rgba(245,158,11,0.75)' : 'rgba(16,185,129,0.75)');
+
+        if (chartBlur) chartBlur.destroy();
+        chartBlur = new Chart(document.getElementById('chart-blur-scores'), {
+            type: 'bar',
+            data: {
+                labels: blurLabels,
+                datasets: [
+                    { data: frameScores, backgroundColor: barColors, borderRadius: 3, label: 'Laplacian Var' },
+                    { data: Array(frameScores.length).fill(100), type: 'line', borderColor: 'rgba(239,68,68,0.6)', borderWidth: 2, borderDash: [4,4], pointRadius: 0, label: 'Threshold (100)' },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: true, labels: { font: { size: 11 } } } },
+                scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true } },
+            },
         });
     }
 
     // ── Frame detail modal ─────────────────────────────────────────
     let _modalFrameIdx = 0;
 
-    function openFrameModal(i) {
-        _modalFrameIdx = i;
-        _renderFrameModal(i);
-        document.getElementById('frame-modal').classList.add('open');
-    }
-
+    function openFrameModal(i) { _modalFrameIdx = i; _renderFrameModal(i); document.getElementById('frame-modal').classList.add('open'); }
     function navigateFrame(dir) {
         if (!_lastResult) return;
         const total = (_lastResult.attention_weights || []).length;
@@ -1132,7 +1285,7 @@
 
     function _renderFrameModal(i) {
         if (!_lastResult) return;
-        const r      = _lastResult;
+        const r = _lastResult;
         const attn   = r.attention_weights || [];
         const vm     = r.visual_metrics    || {};
         const pf     = vm.per_frame        || {};
@@ -1144,52 +1297,50 @@
         const top3    = new Set(sorted.slice(0,3).map(x => x.idx));
         const rank    = sorted.findIndex(x => x.idx === i) + 1;
 
-        // Header
-        document.getElementById('modal-title').textContent =
-            `Frame ${i+1}${top3.has(i) ? '  ⭐' : ''}`;
-        document.getElementById('modal-subtitle').textContent =
-            `Attention rank #${rank} of ${total}  ·  ${i+1} / ${total}`;
+        document.getElementById('modal-title').textContent    = `Frame ${i+1}${top3.has(i) ? '  ⭐' : ''}`;
+        document.getElementById('modal-subtitle').textContent = `Attention rank #${rank} of ${total}  ·  ${i+1} / ${total}`;
 
-        // Image
         const imgEl = document.getElementById('modal-img');
         imgEl.src = thumbs[i] ? `data:image/jpeg;base64,${thumbs[i]}` : '';
         imgEl.style.display = thumbs[i] ? '' : 'none';
 
-        // Nav arrow state
-        document.getElementById('modal-prev').disabled = false;
-        document.getElementById('modal-next').disabled = false;
-
-        // Dot indicators (max 16, always show current)
         const dotsEl = document.getElementById('modal-dots');
         dotsEl.innerHTML = attn.map((_,idx) => {
-            const isActive = idx === i;
-            const isTop    = top3.has(idx);
+            const isActive = idx === i; const isTop = top3.has(idx);
             return `<div onclick="event.stopPropagation();navigateFrame(${idx - i})" style="cursor:pointer;transition:all 0.2s;width:${isActive?'20px':'6px'};height:6px;border-radius:3px;background:${isActive?'#10b981':isTop?'#6ee7b7':'#e2e8f0'}"></div>`;
         }).join('');
 
-        // Metrics
         const attnVal = attn[i] ?? 0;
         const attnPct = attnVal / maxAttn * 100;
         const rgb     = (pf.rgb_means || [])[i] || [0,0,0];
         const sat     = (pf.saturations || [])[i] ?? 0;
         const edge    = (pf.edge_densities || [])[i] ?? 0;
-        const [rV,gV,bV] = rgb;
+        const blurScore = (r.blur_meta?.frame_scores || [])[i];
 
         const [infLabel, infColor, infBg] =
             attnPct >= 80 ? ['High influence',     'text-emerald-700', 'bg-emerald-50 border-emerald-200']
           : attnPct >= 40 ? ['Moderate influence', 'text-amber-700',   'bg-amber-50 border-amber-200']
           :                 ['Low influence',       'text-slate-500',   'bg-slate-100 border-slate-200'];
 
+        const [rV,gV,bV] = rgb;
+        const blurHtml = blurScore !== undefined ? `
+            <div class="rounded-xl border ${blurScore < 100 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'} p-4">
+                <span class="text-sm font-semibold text-slate-700 block mb-1">Frame Sharpness</span>
+                <p class="text-xs text-slate-500 mb-2">Laplacian variance. Below 100 = blurry.</p>
+                <span class="text-xl font-bold ${blurScore < 100 ? 'text-amber-700' : 'text-slate-800'} block mb-1.5">${blurScore.toFixed(1)}</span>
+                <div class="w-full bg-slate-200 rounded-full h-1.5">
+                    <div class="h-1.5 rounded-full transition-all ${blurScore < 100 ? 'bg-amber-400' : 'bg-green-400'}" style="width:${Math.min(blurScore/500*100,100).toFixed(1)}%"></div>
+                </div>
+            </div>` : '';
+
         document.getElementById('modal-metrics').innerHTML = `
             <div class="space-y-3">
-
-                <!-- Attention -->
                 <div class="rounded-xl border ${infBg} p-4">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-sm font-semibold text-slate-700">Attention Weight</span>
                         <span class="text-xs font-medium px-2.5 py-0.5 rounded-full border ${infBg} ${infColor}">${infLabel}</span>
                     </div>
-                    <p class="text-xs text-slate-500 mb-3">How much this frame influenced the decision. Higher = model found it more discriminative.</p>
+                    <p class="text-xs text-slate-500 mb-3">How much this frame influenced the decision.</p>
                     <div class="flex items-center justify-between mb-1.5">
                         <span class="text-xl font-bold text-slate-800">${attnVal.toFixed(4)}</span>
                         <span class="text-xs text-slate-400">${attnPct.toFixed(1)}% of max</span>
@@ -1198,54 +1349,34 @@
                         <div class="h-1.5 rounded-full bg-emerald-500 transition-all" style="width:${Math.min(attnPct,100).toFixed(1)}%"></div>
                     </div>
                 </div>
-
-                <!-- RGB -->
                 <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-semibold text-slate-700">Color Channels (RGB)</span>
-                    </div>
-                    <p class="text-xs text-slate-500 mb-3">Gaming tends blue/dark, Nature tends green, Animation tends vivid.</p>
+                    <span class="text-sm font-semibold text-slate-700 block mb-2">Color Channels (RGB)</span>
                     <div class="space-y-2">
                         ${[['R',rV,'#ef4444'],['G',gV,'#22c55e'],['B',bV,'#3b82f6']].map(([ch,val,col])=>`
                         <div class="flex items-center gap-3">
                             <span class="text-xs font-bold w-3" style="color:${col}">${ch}</span>
-                            <div class="flex-1 bg-slate-200 rounded-full h-2">
-                                <div class="h-2 rounded-full transition-all" style="width:${(val/255*100).toFixed(1)}%;background:${col}"></div>
-                            </div>
+                            <div class="flex-1 bg-slate-200 rounded-full h-2"><div class="h-2 rounded-full transition-all" style="width:${(val/255*100).toFixed(1)}%;background:${col}"></div></div>
                             <span class="text-xs font-bold text-slate-700 w-10 text-right">${val}</span>
                         </div>`).join('')}
                     </div>
                 </div>
-
-                <!-- Saturation + Edge side by side -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <span class="text-sm font-semibold text-slate-700 block mb-1">Saturation</span>
-                        <p class="text-xs text-slate-500 mb-3">0 = grey · 1 = fully vivid. Animation is high, Flat is low.</p>
                         <span class="text-xl font-bold text-slate-800 block mb-1.5">${sat.toFixed(3)}</span>
-                        <div class="w-full bg-slate-200 rounded-full h-1.5">
-                            <div class="h-1.5 rounded-full transition-all" style="width:${(sat*100).toFixed(1)}%;background:linear-gradient(90deg,#f59e0b,#f97316)"></div>
-                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5"><div class="h-1.5 rounded-full transition-all" style="width:${(sat*100).toFixed(1)}%;background:linear-gradient(90deg,#f59e0b,#f97316)"></div></div>
                     </div>
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <span class="text-sm font-semibold text-slate-700 block mb-1">Edge Density</span>
-                        <p class="text-xs text-slate-500 mb-3">High = sharp/detailed (Gaming). Low = simple (Flat).</p>
                         <span class="text-xl font-bold text-slate-800 block mb-1.5">${edge.toFixed(0)}</span>
-                        <div class="w-full bg-slate-200 rounded-full h-1.5">
-                            <div class="h-1.5 rounded-full transition-all" style="width:${Math.min(edge/800*100,100).toFixed(1)}%;background:linear-gradient(90deg,#6366f1,#8b5cf6)"></div>
-                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5"><div class="h-1.5 rounded-full transition-all" style="width:${Math.min(edge/800*100,100).toFixed(1)}%;background:linear-gradient(90deg,#6366f1,#8b5cf6)"></div></div>
                     </div>
                 </div>
-
+                ${blurHtml}
             </div>`;
     }
 
-    function closeFrameModal(e) {
-        if (!e || e.target === document.getElementById('frame-modal'))
-            document.getElementById('frame-modal').classList.remove('open');
-    }
-
-    // keyboard nav
+    function closeFrameModal(e) { if (!e || e.target === document.getElementById('frame-modal')) document.getElementById('frame-modal').classList.remove('open'); }
     document.addEventListener('keydown', e => {
         if (!document.getElementById('frame-modal').classList.contains('open')) return;
         if (e.key === 'ArrowLeft')  navigateFrame(-1);
@@ -1261,20 +1392,13 @@
         document.querySelectorAll('.cross-line').forEach(l => { l.style.animation='none'; void l.offsetWidth; l.style.animation=''; });
         document.getElementById('dl-fail-modal').classList.add('open');
     }
-    function closeDlFailModal(e) {
-        if (!e || e.target === document.getElementById('dl-fail-modal')) {
-            document.getElementById('dl-fail-modal').classList.remove('open');
-            resetApp();
-        }
-    }
+    function closeDlFailModal(e) { if (!e || e.target === document.getElementById('dl-fail-modal')) { document.getElementById('dl-fail-modal').classList.remove('open'); resetApp(); } }
 
     // ── Reset ──────────────────────────────────────────────────────
     function resetApp() {
         selectedVideo = null; selectedFile = null;
         document.getElementById('mode-selection').classList.remove('hidden');
-        datasetMode.classList.add('hidden');
-        uploadMode.classList.add('hidden');
-        urlMode.classList.add('hidden');
+        [datasetMode, uploadMode, urlMode].forEach(m => m.classList.add('hidden'));
         if (currentMode === 'dataset')     { datasetMode.classList.remove('hidden'); selectionSection.classList.remove('hidden'); }
         else if (currentMode === 'upload') { uploadMode.classList.remove('hidden'); }
         else                               { urlMode.classList.remove('hidden'); }
@@ -1284,25 +1408,20 @@
         fileInfo.classList.add('hidden');
         videoFileInput.value = '';
         document.getElementById('url-input').value = '';
-        document.getElementById('url-input').disabled = !ytdlpAvailable;
-        document.getElementById('analyze-url-btn').disabled = !ytdlpAvailable;
         document.getElementById('url-download-progress').classList.add('hidden');
         document.getElementById('analyze-url-btn').disabled = false;
         document.getElementById('url-input').disabled = false;
-        if (!ytdlpAvailable) {
-            document.getElementById('url-input').disabled = true;
-            document.getElementById('analyze-url-btn').disabled = true;
-        }
-        document.querySelectorAll('.video-card').forEach(c => {
-            c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden');
-        });
-        hideError();
-        uploadError.classList.add('hidden');
-        document.getElementById('url-error').classList.add('hidden');
-        [chartAttention, chartRgb, chartEdges, chartSat].forEach(c => { if (c) c.destroy(); });
-        chartAttention = chartRgb = chartEdges = chartSat = null;
-        _lastResult = null;
-        _insightsRendered = false;
+        if (!ytdlpAvailable) { document.getElementById('url-input').disabled = true; document.getElementById('analyze-url-btn').disabled = true; }
+        document.querySelectorAll('.video-card').forEach(c => { c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('hidden'); });
+        hideError(); uploadError.classList.add('hidden'); document.getElementById('url-error').classList.add('hidden');
+        [chartAttention, chartRgb, chartEdges, chartSat, chartBlur].forEach(c => { if (c) c.destroy(); });
+        chartAttention = chartRgb = chartEdges = chartSat = chartBlur = null;
+        _lastResult = null; _insightsRendered = false; _qualityRendered = false;
+        _insightsAccordionOpen = false;
+        const insBody    = document.getElementById('insights-accordion-body');
+        const insChevron = document.getElementById('insights-chevron');
+        if (insBody)    insBody.classList.add('hidden');
+        if (insChevron) insChevron.style.transform = '';
         scrollToCard('start');
     }
 
