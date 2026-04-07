@@ -9,6 +9,9 @@ app.py  —  Flask inference server for NVIDIA Video Classification
   • Model analysis: per-frame attention weights, visual metrics, thumbnails
   • yt-dlp URL download with real-time progress
   • Downloaded videos stored in <repo_root>/downloaded_videos
+  • Blur detection + sharpening (inline from blur_detection.py)
+  • OOD trust scoring (inline from trust_score.py)
+  • Dual-inference: blurry videos are re-classified after sharpening
 
 Mode 1: Test Dataset  → POST /api/classify         { selected_video }
 Mode 2: Upload Video  → POST /api/classify_external { video file }
@@ -20,7 +23,7 @@ Usage:
   python app.py  →  http://localhost:5000
 """
 
-import sys, uuid, logging, threading, time, json, base64
+import sys, uuid, logging, threading, time, json, base64, math
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -52,8 +55,9 @@ FORCE_CPU       = False
 
 RAW_TEST_DIR    = BASE_DIR / 'data' / 'raw' / 'test'
 CHECKPOINT_PATH = BASE_DIR / 'checkpoints' / 'phase2_best.pt'
+CENTROIDS_PATH  = BASE_DIR / 'checkpoints' / 'centroids.npy'
 STATIC_DIR      = Path(__file__).parent / 'static'
-DOWNLOAD_DIR    = Path(__file__).resolve().parents[1] / 'downloaded_videos'   # saved at base_dir/downloaded_videos
+DOWNLOAD_DIR    = Path(__file__).resolve().parents[1] / 'downloaded_videos'
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -63,6 +67,19 @@ NUM_FRAMES    = 16
 N_CANDIDATES  = 48
 SKIP_EDGES    = 0.10
 BLACK_THRESH  = 25
+
+# ── Blur / Trust constants ─────────────────────────────────────────────
+BLUR_THRESHOLD    = 100.0   # Laplacian variance below this → blurry
+TRUST_THRESHOLD   = 0.45    # trust score below this → Unclassified
+MAX_CENTROID_DIST = 20.0    # 95th-percentile centroid distance from training
+
+TRUST_WEIGHTS = {
+    'confidence' : 0.25,
+    'gap'        : 0.20,
+    'entropy'    : 0.20,
+    'attention'  : 0.15,
+    'frame_agree': 0.20,
+}
 
 CLASSES     = ['Animation', 'Flat_Content', 'Gaming', 'Natural_Content']
 NUM_CLASSES = 4
@@ -149,20 +166,22 @@ class VideoClassifier(nn.Module):
     def forward_with_attention(self, x):
         B, T, C, H, W = x.shape
         x    = x.reshape(B * T, C, H, W)
-        feat = self.backbone(x).squeeze(-1).squeeze(-1)
-        feat = feat.reshape(B, T, -1)
-        attn = torch.softmax(self.attention(feat), dim=1)   # (B, T, 1)
-        x    = (feat * attn).sum(dim=1)
-        return self.classifier(x), attn.squeeze(-1)         # logits, (B, T)
+        feat = self.backbone(x).squeeze(-1).squeeze(-1)   # (B*T, 512)
+        feat = feat.reshape(B, T, -1)                     # (B, T, 512)
+        attn = torch.softmax(self.attention(feat), dim=1) # (B, T, 1)
+        pooled = (feat * attn).sum(dim=1)                 # (B, 512)
+        # Returns logits, attention weights, AND frame-level features
+        return self.classifier(pooled), attn.squeeze(-1), feat  # logits, (B,T), (B,T,512)
 
 
 _model      = None
 _device     = None
+_centroids  = None   # loaded once at startup if centroids.npy exists
 _model_lock = threading.Lock()
 
 
 def get_model():
-    global _model, _device
+    global _model, _device, _centroids
     if _model is not None:
         return _model, _device
     with _model_lock:
@@ -181,7 +200,215 @@ def get_model():
         _model.eval()
         log.info(f"  ✓ Model loaded — epoch {ckpt['epoch']}  "
                  f"best val acc {ckpt['best_val_acc']:.2f}%")
+
+        # Load centroids if available (for centroid distance trust signal)
+        if CENTROIDS_PATH.exists():
+            try:
+                loaded = np.load(str(CENTROIDS_PATH), allow_pickle=True).item()
+                # Validate format: must have all 4 class keys with 512-dim arrays
+                if all(cls in loaded for cls in CLASSES):
+                    _centroids = loaded
+                    log.info("  ✓ Centroids loaded — centroid distance signal enabled")
+                else:
+                    log.warning("  ⚠ centroids.npy missing class keys — centroid signal disabled")
+            except Exception as e:
+                log.warning(f"  ⚠ Could not load centroids: {e} — centroid signal disabled")
+        else:
+            log.info("  ℹ centroids.npy not found — run build_centroids.py to enable centroid signal")
+
     return _model, _device
+
+
+# ══════════════════════════════════════════════════════════════════════
+# BLUR DETECTION  (inlined from blur_detection.py)
+# ══════════════════════════════════════════════════════════════════════
+
+def _frame_blur_score(frame: np.ndarray) -> float:
+    """Laplacian variance for a single BGR frame. Higher = sharper."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def _check_blur(frames: list):
+    """
+    Returns (is_blurry, mean_score, frame_scores) for a list of BGR frames.
+    """
+    scores     = [_frame_blur_score(f) for f in frames]
+    mean_score = float(np.mean(scores))
+    is_blurry  = mean_score < BLUR_THRESHOLD
+    return is_blurry, round(mean_score, 2), [round(s, 2) for s in scores]
+
+
+def _sharpen_frame(frame: np.ndarray) -> np.ndarray:
+    """Unsharp masking: sharpened = 1.5×original − 0.5×blurred."""
+    blurred   = cv2.GaussianBlur(frame, (0, 0), sigmaX=3)
+    sharpened = cv2.addWeighted(frame, 1.5, blurred, -0.5, 0)
+    return sharpened
+
+
+def process_blur(frames: list):
+    """
+    Full blur stage. Detects blur, sharpens if needed.
+
+    Returns:
+        ready_frames : list of BGR arrays (sharpened if blurry, else unchanged)
+        blur_meta    : dict with is_blurry, blur_score, enhanced, frame_scores
+    """
+    is_blurry, mean_score, frame_scores = _check_blur(frames)
+
+    if is_blurry:
+        ready_frames = [_sharpen_frame(f) for f in frames]
+        enhanced     = True
+        log.info(f"  [blur] Blurry (score={mean_score:.1f} < {BLUR_THRESHOLD}) — sharpened {len(frames)} frames")
+    else:
+        ready_frames = frames
+        enhanced     = False
+        log.info(f"  [blur] Clear (score={mean_score:.1f} ≥ {BLUR_THRESHOLD})")
+
+    blur_meta = {
+        'is_blurry'   : is_blurry,
+        'blur_score'  : mean_score,
+        'enhanced'    : enhanced,
+        'frame_scores': frame_scores,
+    }
+    return ready_frames, blur_meta
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TRUST SCORE  (inlined from trust_score.py)
+# ══════════════════════════════════════════════════════════════════════
+
+def _ts_confidence(probs: list) -> float:
+    return float(max(probs))
+
+
+def _ts_gap(probs: list) -> float:
+    s = sorted(probs, reverse=True)
+    return float(s[0] - s[1])
+
+
+def _ts_entropy(probs: list) -> float:
+    max_e   = math.log(len(probs))
+    entropy = -sum(p * math.log(p + 1e-9) for p in probs)
+    return float(1.0 - (entropy / max_e))
+
+
+def _ts_attention(attn_weights: list) -> float:
+    attn    = np.clip(np.array(attn_weights, dtype=np.float64), 1e-9, None)
+    attn   /= attn.sum()
+    max_e   = math.log(len(attn))
+    entropy = float(-np.sum(attn * np.log(attn)))
+    return float(1.0 - (entropy / max_e))
+
+
+def _ts_frame_agreement(frame_features: torch.Tensor,
+                         classifier_head: nn.Module,
+                         pred_idx: int,
+                         device: torch.device) -> float:
+    """Fraction of frames that individually predict the same class as the video."""
+    classifier_head.eval()
+    with torch.no_grad():
+        feats        = frame_features.to(device).float()   # (16, 512) – ensure float32
+        frame_logits = classifier_head(feats)               # (16, 4)
+        frame_preds  = frame_logits.argmax(dim=1)
+        agreement    = (frame_preds == pred_idx).float().mean().item()
+    return float(agreement)
+
+
+def _ts_centroid_distance(video_feature: torch.Tensor,
+                           pred_idx: int,
+                           centroids: dict):
+    """
+    Returns (dist_score, raw_dist).
+    dist_score ∈ [0,1]: 1 = at centroid, 0 = MAX_CENTROID_DIST away.
+    Returns (None, None) if centroids not available.
+    """
+    if centroids is None:
+        return None, None
+    pred_class = CLASSES[pred_idx]
+    centroid   = torch.tensor(centroids[pred_class], dtype=torch.float32)
+    feat       = video_feature.cpu().float()
+    raw_dist   = torch.norm(feat - centroid).item()
+    dist_score = max(0.0, 1.0 - (raw_dist / MAX_CENTROID_DIST))
+    return float(dist_score), round(raw_dist, 4)
+
+
+def compute_trust_score(probs: list,
+                         attn_weights: list,
+                         pred_idx: int,
+                         frame_features=None,
+                         classifier_head=None,
+                         device=None,
+                         centroids=None):
+    """
+    Returns (trust_score, breakdown_dict).
+    Combines up to 6 signals; gracefully degrades when optional inputs absent.
+    """
+    breakdown = {}
+    breakdown['confidence'] = round(_ts_confidence(probs),   4)
+    breakdown['gap']        = round(_ts_gap(probs),           4)
+    breakdown['entropy']    = round(_ts_entropy(probs),       4)
+    breakdown['attention']  = round(_ts_attention(attn_weights), 4)
+
+    # Frame agreement (needs frame_features + classifier_head)
+    if frame_features is not None and classifier_head is not None and device is not None:
+        breakdown['frame_agree'] = round(
+            _ts_frame_agreement(frame_features, classifier_head, pred_idx, device), 4)
+    else:
+        breakdown['frame_agree'] = breakdown['gap']   # fallback proxy
+
+    # Centroid distance (needs centroids file)
+    use_centroid = False
+    if centroids is not None and frame_features is not None:
+        video_feat = frame_features.mean(dim=0)       # (512,)
+        dist_score, raw_dist = _ts_centroid_distance(video_feat, pred_idx, centroids)
+        if dist_score is not None:
+            breakdown['centroid_dist']     = round(dist_score, 4)
+            breakdown['centroid_raw_dist'] = raw_dist
+            use_centroid = True
+
+    if use_centroid:
+        trust = (
+            0.20 * breakdown['confidence'] +
+            0.15 * breakdown['gap']        +
+            0.20 * breakdown['entropy']    +
+            0.15 * breakdown['attention']  +
+            0.15 * breakdown['frame_agree']+
+            0.15 * breakdown['centroid_dist']
+        )
+    else:
+        trust = (
+            TRUST_WEIGHTS['confidence']  * breakdown['confidence']  +
+            TRUST_WEIGHTS['gap']         * breakdown['gap']         +
+            TRUST_WEIGHTS['entropy']     * breakdown['entropy']     +
+            TRUST_WEIGHTS['attention']   * breakdown['attention']   +
+            TRUST_WEIGHTS['frame_agree'] * breakdown['frame_agree']
+        )
+
+    return round(float(trust), 4), breakdown
+
+
+def get_verdict(trust_score: float, pred_idx: int, probs: list) -> dict:
+    """Converts trust score to final classification verdict dict."""
+    all_scores    = {CLASSES[i]: round(probs[i] * 100, 2) for i in range(4)}
+    closest_match = CLASSES[pred_idx]
+    closest_score = round(probs[pred_idx] * 100, 2)
+
+    if trust_score >= TRUST_THRESHOLD:
+        category = CLASSES[pred_idx]
+        ood_flag = False
+    else:
+        category = 'Unclassified'
+        ood_flag = True
+
+    return {
+        'category'     : category,
+        'ood_flag'     : ood_flag,
+        'trust_score'  : trust_score,
+        'closest_match': closest_match,
+        'closest_score': closest_score,
+        'all_scores'   : all_scores,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -255,10 +482,67 @@ def encode_frames_b64(frames_bgr: list, max_dim: int = 160) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# CORE INFERENCE HELPER  (runs on a prepared tensor, returns full dict)
+# ══════════════════════════════════════════════════════════════════════
+
+def _infer_tensor(tensor: torch.Tensor, model, device) -> dict:
+    """
+    Runs one forward pass and computes trust score.
+    Returns a dict with all inference fields including trust/OOD info.
+    """
+    tensor = tensor.to(device, non_blocking=True)
+    with torch.no_grad():
+        with torch.cuda.amp.autocast(enabled=device.type == 'cuda'):
+            logits, attn_weights, frame_feat = model.forward_with_attention(tensor)
+        probs = torch.softmax(logits.float(), dim=1)[0]
+
+    probs_list  = probs.cpu().tolist()
+    pred_idx    = int(torch.argmax(probs).item())
+    attn_list   = [round(w, 6) for w in attn_weights[0].cpu().tolist()]
+
+    # frame_feat shape: (1, 16, 512) → squeeze to (16, 512)
+    frame_features_16 = frame_feat[0]   # (16, 512)
+
+    # Compute trust score
+    trust, breakdown = compute_trust_score(
+        probs          = probs_list,
+        attn_weights   = attn_list,
+        pred_idx       = pred_idx,
+        frame_features = frame_features_16,
+        classifier_head= model.classifier,
+        device         = device,
+        centroids      = _centroids,
+    )
+    verdict = get_verdict(trust, pred_idx, probs_list)
+
+    return {
+        # raw softmax info (always kept for reference)
+        'raw_category'     : CLASSES[pred_idx],
+        'raw_confidence'   : round(probs_list[pred_idx] * 100.0, 2),
+        # verdict (may be Unclassified)
+        'category'         : verdict['category'],
+        'confidence'       : round(probs_list[pred_idx] * 100.0, 2),
+        'all_scores'       : {cls: round(probs_list[i] * 100.0, 2)
+                              for i, cls in enumerate(CLASSES)},
+        'attention_weights': attn_list,
+        # OOD / trust
+        'ood_flag'         : verdict['ood_flag'],
+        'trust_score'      : trust,
+        'trust_breakdown'  : breakdown,
+        'closest_match'    : verdict['closest_match'],
+        'closest_score'    : verdict['closest_score'],
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
 # EXTRACTION + PREPROCESSING
 # ══════════════════════════════════════════════════════════════════════
 
-def extract_and_preprocess(video_path: str, job=None):
+def extract_raw_frames(video_path: str, job=None):
+    """
+    Extracts raw BGR frames from video. Returns (raw_frames, status, n_frames).
+    Does NOT preprocess — blur detection + preprocessing happen after.
+    """
     t0 = time.time()
 
     def _upd(pct, name, eta=None):
@@ -320,7 +604,7 @@ def extract_and_preprocess(video_path: str, job=None):
         if i in milestones:
             elapsed = time.time() - t_read
             frac    = (i + 1) / n_idx
-            _upd(int(10 + frac * 65), 'Extracting frames…', _eta(elapsed, frac))
+            _upd(int(10 + frac * 50), 'Extracting frames…', _eta(elapsed, frac))
 
     cap2.release()
     pbar.close()
@@ -329,7 +613,7 @@ def extract_and_preprocess(video_path: str, job=None):
     if not raw_frames:
         raise ValueError("Failed to read any frames from video.")
 
-    _upd(76, 'Filtering black frames…')
+    _upd(62, 'Filtering black frames…')
     good = [f for f in raw_frames if not is_black(f)]
     if len(good) >= NUM_FRAMES:
         step     = len(good) / NUM_FRAMES
@@ -345,41 +629,7 @@ def extract_and_preprocess(video_path: str, job=None):
     log.info(f"  Good frames: {len(good)}/{len(raw_frames)}  "
              f"selected: {len(selected)}  status={status}")
 
-    _upd(78, 'Preprocessing on GPU…')
-    t_pp = time.time()
-    _, device = get_model()
-    batch = _preprocess_batch_gpu(selected, device)
-    if batch.shape[0] < NUM_FRAMES:
-        pad   = batch[-1:].expand(NUM_FRAMES - batch.shape[0], -1, -1, -1)
-        batch = torch.cat([batch, pad], dim=0)
-    tensor = batch.unsqueeze(0)
-
-    log.info(f"  GPU preprocess: {time.time()-t_pp:.3f}s")
-    _upd(90, 'Building tensor…', _eta(time.time() - t0, 0.90))
-
-    return tensor, status, len(selected), selected
-
-
-# ══════════════════════════════════════════════════════════════════════
-# INFERENCE
-# ══════════════════════════════════════════════════════════════════════
-
-def run_inference(tensor: torch.Tensor, model, device) -> dict:
-    tensor = tensor.to(device, non_blocking=True)
-    with torch.no_grad():
-        with torch.cuda.amp.autocast(enabled=device.type == 'cuda'):
-            logits, attn_weights = model.forward_with_attention(tensor)
-        probs = torch.softmax(logits.float(), dim=1)[0]
-
-    probs_list = probs.cpu().tolist()
-    pred_idx   = int(torch.argmax(probs).item())
-    return {
-        'category'         : CLASSES[pred_idx],
-        'confidence'       : round(probs_list[pred_idx] * 100.0, 2),
-        'all_scores'       : {cls: round(probs_list[i] * 100.0, 2)
-                              for i, cls in enumerate(CLASSES)},
-        'attention_weights': [round(w, 6) for w in attn_weights[0].cpu().tolist()],
-    }
+    return selected, status, len(selected), t0
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -390,7 +640,6 @@ def _run_pipeline(job: Job, video_path: str, source: str,
                   video_name: str, true_class: str | None):
     try:
         job.update(status='running', progress=1, step_name='Starting…')
-        t0 = time.time()
 
         pbar_overall = tqdm(total=100, desc=f'  {video_name[:45]}', unit='%',
                             bar_format='  {l_bar}{bar:32}{r_bar}', dynamic_ncols=True)
@@ -405,46 +654,135 @@ def _run_pipeline(job: Job, video_path: str, source: str,
                 time.sleep(0.15)
         threading.Thread(target=_tick, daemon=True).start()
 
-        tensor, status, n_frames, selected_frames = extract_and_preprocess(video_path, job)
-
-        elapsed = time.time() - t0
-        job.update(progress=93, step_name='Running model inference…',
-                   eta_sec=round(max(0, elapsed * (7/93)), 1))
+        # ── STEP 1–2: Extract raw frames ──────────────────────────────
+        raw_frames, status, n_frames, t0 = extract_raw_frames(video_path, job)
 
         model, device = get_model()
-        result        = run_inference(tensor, model, device)
-        t_total       = time.time() - t0
 
-        job.update(progress=95, step_name='Extracting visual metrics…')
-        visual_metrics = extract_visual_metrics(selected_frames)
-        attn_entropy   = compute_attention_entropy(result['attention_weights'])
+        # ── STEP 3: Blur detection + sharpening ───────────────────────
+        job.update(progress=64, step_name='Blur detection…')
+        ready_frames, blur_meta = process_blur(raw_frames)
 
-        job.update(progress=97, step_name='Encoding frame thumbnails…')
-        frame_thumbnails = encode_frames_b64(selected_frames, max_dim=160)
+        # ── STEP 4: Preprocess raw frames → GPU tensor ─────────────────
+        job.update(progress=68, step_name='Preprocessing on GPU…')
+        t_pp = time.time()
+        batch_raw = _preprocess_batch_gpu(raw_frames, device)
+        if batch_raw.shape[0] < NUM_FRAMES:
+            pad       = batch_raw[-1:].expand(NUM_FRAMES - batch_raw.shape[0], -1, -1, -1)
+            batch_raw = torch.cat([batch_raw, pad], dim=0)
+        tensor_raw = batch_raw.unsqueeze(0)
+        log.info(f"  GPU preprocess (raw): {time.time()-t_pp:.3f}s")
 
-        result.update({
-            'video_name'       : video_name,
-            'source'           : source,
-            'frames_extracted' : n_frames,
-            'extraction_status': status,
-            'processing_time_s': round(t_total, 2),
-            'device'           : str(device),
-            'attention_entropy': attn_entropy,
-            'visual_metrics'   : visual_metrics,
-            'frame_thumbnails' : frame_thumbnails,
-        })
+        # ── STEP 5: First inference (on raw frames) ────────────────────
+        job.update(progress=72, step_name='Running model inference…')
+        result_raw = _infer_tensor(tensor_raw, model, device)
+        log.info(f"  [pass-1] {result_raw['raw_category']}  "
+                 f"conf={result_raw['raw_confidence']:.1f}%  "
+                 f"trust={result_raw['trust_score']:.3f}")
+
+        # ── STEP 5b: Re-classify after sharpening (if blurry) ─────────
+        if blur_meta['is_blurry']:
+            job.update(progress=78, step_name='Re-classifying sharpened frames…')
+            t_pp2 = time.time()
+            batch_sharp = _preprocess_batch_gpu(ready_frames, device)
+            if batch_sharp.shape[0] < NUM_FRAMES:
+                pad         = batch_sharp[-1:].expand(NUM_FRAMES - batch_sharp.shape[0], -1, -1, -1)
+                batch_sharp = torch.cat([batch_sharp, pad], dim=0)
+            tensor_sharp = batch_sharp.unsqueeze(0)
+            log.info(f"  GPU preprocess (sharpened): {time.time()-t_pp2:.3f}s")
+
+            result_sharp = _infer_tensor(tensor_sharp, model, device)
+            log.info(f"  [pass-2] {result_sharp['raw_category']}  "
+                     f"conf={result_sharp['raw_confidence']:.1f}%  "
+                     f"trust={result_sharp['trust_score']:.3f}")
+
+            # Keep the result with the higher trust score
+            if result_sharp['trust_score'] >= result_raw['trust_score']:
+                chosen_result   = result_sharp
+                chosen_frames   = ready_frames   # sharpened frames for thumbnails/metrics
+                inference_note  = 'sharpened'
+                log.info(f"  → Using sharpened result (trust {result_sharp['trust_score']:.3f} ≥ {result_raw['trust_score']:.3f})")
+            else:
+                chosen_result   = result_raw
+                chosen_frames   = raw_frames
+                inference_note  = 'original_higher_trust'
+                log.info(f"  → Using original result (trust {result_raw['trust_score']:.3f} > {result_sharp['trust_score']:.3f})")
+
+            # Store both passes for the frontend
+            dual_inference = {
+                'original' : {
+                    'category'   : result_raw['raw_category'],
+                    'confidence' : result_raw['raw_confidence'],
+                    'trust_score': result_raw['trust_score'],
+                    'ood_flag'   : result_raw['ood_flag'],
+                },
+                'sharpened': {
+                    'category'   : result_sharp['raw_category'],
+                    'confidence' : result_sharp['raw_confidence'],
+                    'trust_score': result_sharp['trust_score'],
+                    'ood_flag'   : result_sharp['ood_flag'],
+                },
+                'chosen': inference_note,
+            }
+        else:
+            # Not blurry — single inference, use raw frames throughout
+            chosen_result  = result_raw
+            chosen_frames  = raw_frames
+            inference_note = 'single_pass'
+            dual_inference = None
+
+        job.update(progress=84, step_name='Extracting visual metrics…')
+        t_total        = time.time() - t0
+        visual_metrics = extract_visual_metrics(chosen_frames)
+        attn_entropy   = compute_attention_entropy(chosen_result['attention_weights'])
+
+        job.update(progress=92, step_name='Encoding frame thumbnails…')
+        frame_thumbnails = encode_frames_b64(chosen_frames, max_dim=160)
+
+        # ── Build final result dict ────────────────────────────────────
+        final = {
+            # Identity
+            'video_name'        : video_name,
+            'source'            : source,
+            'frames_extracted'  : n_frames,
+            'extraction_status' : status,
+            'processing_time_s' : round(t_total, 2),
+            'device'            : str(device),
+            # Classification verdict
+            'category'          : chosen_result['category'],
+            'confidence'        : chosen_result['confidence'],
+            'all_scores'        : chosen_result['all_scores'],
+            # Attention
+            'attention_weights' : chosen_result['attention_weights'],
+            'attention_entropy' : attn_entropy,
+            # OOD / trust
+            'ood_flag'          : chosen_result['ood_flag'],
+            'trust_score'       : chosen_result['trust_score'],
+            'trust_breakdown'   : chosen_result['trust_breakdown'],
+            'closest_match'     : chosen_result['closest_match'],
+            'closest_score'     : chosen_result['closest_score'],
+            # Blur
+            'blur_meta'         : blur_meta,
+            # Dual-inference detail (only present when blurry)
+            'dual_inference'    : dual_inference,
+            # Visual
+            'visual_metrics'    : visual_metrics,
+            'frame_thumbnails'  : frame_thumbnails,
+        }
         if true_class:
-            result['true_class'] = true_class
+            final['true_class'] = true_class
 
         job.update(progress=100, step_name='Done', status='done', eta_sec=0)
-        job.result = result
+        job.result = final
 
         if _prev_pct[0] < 100:
             pbar_overall.update(100 - _prev_pct[0])
         pbar_overall.close()
 
-        log.info(f"  ✓ {video_name}  →  {result['category']}  "
-                 f"({result['confidence']:.1f}%)  in {t_total:.2f}s  device={device}")
+        log.info(f"  ✓ {video_name}  →  {final['category']}  "
+                 f"(conf={final['confidence']:.1f}%  trust={final['trust_score']:.3f}  "
+                 f"blur={'yes' if blur_meta['is_blurry'] else 'no'})  "
+                 f"in {t_total:.2f}s  device={device}")
 
     except Exception as exc:
         log.exception(f"Pipeline error for {video_name}")
@@ -516,6 +854,7 @@ def api_status():
         'external_processing_available': model_ok,
         'ytdlp_available'              : YTDLP_AVAILABLE,
         'device'                       : device_str,
+        'centroids_loaded'             : _centroids is not None,
     })
 
 @app.route('/api/videos')
@@ -570,7 +909,6 @@ def api_classify_external():
 
 @app.route('/api/download_url', methods=['POST'])
 def api_download_url():
-    """Start a yt-dlp download; progress streams via SSE, pipeline starts after download."""
     if not YTDLP_AVAILABLE:
         return jsonify({'success': False, 'error': 'yt-dlp not installed on this server.'}), 400
     try:
@@ -598,7 +936,6 @@ def api_download_url():
                                    step_name=f'Downloading… {spd_str}'.strip(),
                                    eta_sec=round(eta, 1) if eta is not None else None)
                     elif d.get('status') == 'finished':
-                        # Signal download_complete — frontend shows toast before pipeline starts
                         job.update(progress=29, step_name='download_complete', eta_sec=0)
 
                 ydl_opts = {
@@ -628,7 +965,6 @@ def api_download_url():
                 log.info(f"yt-dlp saved: {actual.name}  "
                          f"({actual.stat().st_size/(1024*1024):.1f} MB)  title={video_name}")
 
-                # Brief pause so frontend can display the "Download complete" toast
                 time.sleep(1.5)
 
                 log.info(f"Job {job.id[:8]}  url → {video_name}")
@@ -684,6 +1020,7 @@ if __name__ == '__main__':
     log.info(f"  Checkpoint      : {CHECKPOINT_PATH}")
     log.info(f"  Test data       : {RAW_TEST_DIR}")
     log.info(f"  Downloaded vids : {DOWNLOAD_DIR}")
+    log.info(f"  Centroids       : {'loaded' if _centroids else 'not found'}")
     log.info(f"  yt-dlp          : {'available' if YTDLP_AVAILABLE else 'not installed'}")
     log.info("  URL             : http://localhost:5000")
     log.info("=" * 60)
