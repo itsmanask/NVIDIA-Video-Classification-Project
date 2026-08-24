@@ -1,4 +1,4 @@
-# Multi-Class Video Classification using Deep Learning 🎥🧠
+# Multi-Class Video Classification using Deep Learning 🎥🧠.
 
 An industry-sponsored Deep Learning project by NVIDIA focused on large-scale multi-class video classification using spatial and temporal learning techniques.
 
